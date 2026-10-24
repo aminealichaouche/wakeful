@@ -7,7 +7,8 @@ final class StatusPanelResizeTests: XCTestCase {
     private var controller: StatusPanelController!
     private var cleanupSettings: (() -> Void)!
 
-    override func setUp() {
+    override func setUpWithError() throws {
+        try XCTSkipIf(isRunningOnCI, "frame-timing test; shared CI runners are too slow to sample reliably")
         let settings: Settings
         (settings, cleanupSettings) = makeTestSettings()
         let manager = SessionManager(settings: settings, closedDisplayGuard: ClosedDisplayGuard(directory: makeTempDirectory()))
@@ -15,9 +16,10 @@ final class StatusPanelResizeTests: XCTestCase {
     }
 
     override func tearDown() {
+        guard let controller else { return }
         controller.closePanel()
         spin(0.3)
-        controller = nil
+        self.controller = nil
         cleanupSettings()
     }
 

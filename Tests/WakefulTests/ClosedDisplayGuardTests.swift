@@ -116,6 +116,7 @@ final class ClosedDisplayGuardTests: XCTestCase {
 
     func testEnableFailsCleanlyWithoutHelper() throws {
         try XCTSkipIf(ClosedDisplayGuard.isHelperInstalled, "helper installed; covered by PmsetIntegrationTests")
+        try XCTSkipIf(hasPasswordlessSudo, "sudo needs no password here, so pmset works without the helper")
         let dir = makeTempDirectory()
         let guardian = ClosedDisplayGuard(directory: dir)
         XCTAssertFalse(guardian.enable())

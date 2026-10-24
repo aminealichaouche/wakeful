@@ -54,6 +54,17 @@ func shell(_ command: String, _ arguments: [String] = []) -> (status: Int32, out
     return (process.terminationStatus, String(decoding: data, as: UTF8.self))
 }
 
+/// True when sudo works without a password for everything (e.g. GitHub's macOS runners), so
+/// closed-display mode works even without Wakeful's helper.
+var hasPasswordlessSudo: Bool {
+    shell("/usr/bin/sudo -n /usr/bin/true").status == 0
+}
+
+/// True on CI, where shared runners are too slow for frame-timing tests.
+var isRunningOnCI: Bool {
+    ProcessInfo.processInfo.environment["CI"] == "true"
+}
+
 /// Current `pmset` SleepDisabled value (true = closed-display mode on).
 func isSleepDisabled() -> Bool {
     shell("/usr/bin/pmset -g | /usr/bin/awk '/SleepDisabled/ {print $2}'").output

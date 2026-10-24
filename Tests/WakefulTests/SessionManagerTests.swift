@@ -53,6 +53,7 @@ final class SessionManagerTests: XCTestCase {
 
     func testClosedDisplayModeWithoutHelperFallsBackToAllowingSleep() throws {
         try XCTSkipIf(ClosedDisplayGuard.isHelperInstalled, "helper installed; covered by PmsetIntegrationTests")
+        try XCTSkipIf(hasPasswordlessSudo, "sudo needs no password here, so pmset works without the helper")
         settings.allowSleepWhenDisplayClosed = false
         manager.start(.manual(until: nil))
         XCTAssertTrue(settings.allowSleepWhenDisplayClosed, "setting reverts when the helper is missing")
