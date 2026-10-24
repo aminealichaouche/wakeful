@@ -24,10 +24,12 @@ final class Session {
         return nil
     }
 
-    var triggerDescription: String {
+    /// What's keeping the session going, or nil for a session started by hand (the time line
+    /// already says everything there is to say).
+    var triggerDescription: String? {
         switch trigger {
         case .manual:
-            return "Manual Activation"
+            return nil
         case .app(let app):
             return "While “\(app.localizedName ?? "App")” is running"
         case .download(let watcher):

@@ -218,9 +218,11 @@ private struct SessionCard: View {
                                 Text(session.remainingDescription)
                                     .monospacedDigit()
                             }
-                            Text(session.triggerDescription)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
+                            if let trigger = session.triggerDescription {
+                                Text(trigger)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
                         } else {
                             Text("Inactive")
                         }

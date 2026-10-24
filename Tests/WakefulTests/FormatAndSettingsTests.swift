@@ -48,7 +48,7 @@ final class SessionDescriptionTests: XCTestCase {
         let indefinite = Session(trigger: .manual(until: nil))
         XCTAssertNil(indefinite.endDate)
         XCTAssertEqual(indefinite.remainingDescription, "Indeterminate time remaining")
-        XCTAssertEqual(indefinite.triggerDescription, "Manual Activation")
+        XCTAssertNil(indefinite.triggerDescription, "manual sessions need no second line")
 
         let timed = Session(trigger: .manual(until: Date().addingTimeInterval(90)))
         XCTAssertTrue(timed.remainingDescription.hasSuffix("remaining"))

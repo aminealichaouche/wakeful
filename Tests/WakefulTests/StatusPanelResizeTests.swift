@@ -5,18 +5,20 @@ import XCTest
 /// Records the panel's height frame by frame while switching pages and reopening.
 final class StatusPanelResizeTests: XCTestCase {
     private var controller: StatusPanelController!
+    private var manager: SessionManager!
     private var cleanupSettings: (() -> Void)!
 
     override func setUpWithError() throws {
         try XCTSkipIf(isRunningOnCI, "frame-timing test; shared CI runners are too slow to sample reliably")
         let settings: Settings
         (settings, cleanupSettings) = makeTestSettings()
-        let manager = SessionManager(settings: settings, closedDisplayGuard: ClosedDisplayGuard(directory: makeTempDirectory()))
+        manager = SessionManager(settings: settings, closedDisplayGuard: ClosedDisplayGuard(directory: makeTempDirectory()))
         controller = StatusPanelController(manager: manager, settings: settings, updater: UpdateChecker())
     }
 
     override func tearDown() {
         guard let controller else { return }
+        manager.end()
         controller.closePanel()
         spin(0.3)
         self.controller = nil
@@ -67,5 +69,14 @@ final class StatusPanelResizeTests: XCTestCase {
         XCTAssertGreaterThan(mainHeight, settingsHeight)
         XCTAssertEqual(growing, growing.sorted(), "height went back down while growing: \(growing)")
         XCTAssertGreaterThan(Set(growing).count, 3, "panel jumped instead of animating: \(growing)")
+    }
+
+    /// A manual session's card has two lines, like "Inactive", so switching on doesn't resize the menu.
+    func testManualSessionDoesNotResizeMenu() throws {
+        controller.showPanel()
+        let inactiveHeight = try XCTUnwrap(heights(for: 0.5).last)
+        manager.start(.manual(until: nil))
+        let active = heights(for: 0.5)
+        XCTAssertEqual(Set(active), [inactiveHeight], "menu resized when a session started: \(active)")
     }
 }
