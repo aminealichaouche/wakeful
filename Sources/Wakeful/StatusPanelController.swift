@@ -20,24 +20,19 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
 
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let panel = DropdownPanel()
+    let navigation = MenuNavigation()
     private var contentSize = CGSize(width: 300, height: 400)
     private var eventMonitors: [Any] = []
     private var iconSubscription: AnyCancellable?
+    private var layoutSubscriptions: [AnyCancellable] = []
     private var autoClosedAt: TimeInterval = -.infinity
-    private let hostingController: NSHostingController<AnyView>
-    private var sizeObservation: NSKeyValueObservation?
     /// Open from the user's point of view. The panel stays on screen a moment longer while it fades out.
     private var isOpen = false
     /// Bumped on every show and close so a finished close animation never hides a reopened panel.
     private var transition = 0
+    private var hostingController: NSHostingController<AnyView>!
 
-    init(manager: SessionManager, settings: Settings) {
-        // Top-aligned so content never jumps while the panel animates to a new height.
-        hostingController = NSHostingController(rootView: AnyView(
-            MenuView(manager: manager, settings: settings)
-                .frame(maxHeight: .infinity, alignment: .top)
-        ))
-        hostingController.sizingOptions = [.preferredContentSize]
+    init(manager: SessionManager, settings: Settings, updater: UpdateChecker) {
         super.init()
 
         let background = NSVisualEffectView()
@@ -48,18 +43,34 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
         background.layer?.cornerRadius = 10
         background.layer?.masksToBounds = true
 
+        // This controller is the only thing that sizes the panel. The hosting view gets no sizing
+        // constraints, because Auto Layout would otherwise resize the window behind our back
+        // (unanimated, and away from the icon). While open, the menu reports its height whenever it
+        // changes; on opening it's measured directly, since SwiftUI doesn't update hidden windows.
+        // Top-aligned so content never jumps while the panel animates to a new height.
+        hostingController = NSHostingController(rootView: AnyView(
+            MenuView(manager: manager, settings: settings, updater: updater, navigation: navigation)
+                .fixedSize(horizontal: false, vertical: true)
+                .background(GeometryReader { proxy in
+                    Color.clear.preference(key: MenuSizeKey.self, value: proxy.size)
+                })
+                .onPreferenceChange(MenuSizeKey.self) { [weak self] size in
+                    DispatchQueue.main.async { self?.contentSizeChanged(size) }
+                }
+                .frame(maxHeight: .infinity, alignment: .top)
+        ))
+        hostingController.sizingOptions = []
         let hosting = hostingController.view
-        hosting.autoresizingMask = [.width, .height]
+        hosting.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(hosting)
+        NSLayoutConstraint.activate([
+            hosting.topAnchor.constraint(equalTo: background.topAnchor),
+            hosting.bottomAnchor.constraint(equalTo: background.bottomAnchor),
+            hosting.leadingAnchor.constraint(equalTo: background.leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: background.trailingAnchor),
+        ])
         panel.contentView = background
         panel.delegate = self
-        hosting.frame = background.bounds
-
-        // SwiftUI publishes its ideal size here whenever sections expand or collapse.
-        sizeObservation = hostingController.observe(\.preferredContentSize, options: [.initial, .new]) { [weak self] controller, _ in
-            let size = controller.preferredContentSize
-            DispatchQueue.main.async { self?.contentSizeChanged(size) }
-        }
 
         if let button = statusItem.button {
             button.target = self
@@ -70,9 +81,17 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
         iconSubscription = manager.$session.sink { [weak self] session in
             self?.statusItem.button?.image = session == nil ? StatusIcon.inactive : StatusIcon.active
         }
+        // These change the menu's height. Measure once the change has landed.
+        for publisher in [navigation.objectWillChange.eraseToAnyPublisher(),
+                          manager.$session.map { _ in () }.eraseToAnyPublisher()] {
+            layoutSubscriptions.append(publisher.sink { [weak self] in
+                DispatchQueue.main.async { self?.remeasure() }
+            })
+        }
     }
 
     var isPanelVisible: Bool { isOpen }
+    var panelFrame: NSRect { panel.frame }
 
     // MARK: - Showing and hiding
 
@@ -88,6 +107,7 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
     }
 
     func showPanel() {
+        remeasure()
         isOpen = true
         transition += 1
         let frame = targetFrame() ?? panel.frame
@@ -163,6 +183,14 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
 
     // MARK: - Layout
 
+    /// Measures the menu directly. Unlike the size the menu reports while rendering, this also
+    /// works while the panel is hidden.
+    private func remeasure() {
+        // Applies pending SwiftUI changes first; otherwise the size lags one change behind.
+        hostingController.view.layoutSubtreeIfNeeded()
+        contentSizeChanged(hostingController.sizeThatFits(in: CGSize(width: MenuView.width, height: 0)))
+    }
+
     private func contentSizeChanged(_ size: CGSize) {
         guard size.width > 0, size.height > 0, size != contentSize else { return }
         contentSize = size
@@ -174,7 +202,8 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
     private func resizePanel() {
         guard let frame = targetFrame() else { return }
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.15
+            context.duration = MenuView.animationDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             panel.animator().setFrame(frame, display: true)
         }
         panel.invalidateShadow()
@@ -192,10 +221,18 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
     /// Frame for the panel: top edge just under the icon, left-aligned with it, kept on screen.
     static func panelFrame(contentSize: CGSize, below anchor: NSRect, in visibleFrame: NSRect) -> NSRect {
         let top = min(anchor.minY, visibleFrame.maxY) - gapBelowMenuBar
-        let height = min(contentSize.height, top - visibleFrame.minY - screenMargin)
+        let height = max(min(contentSize.height, top - visibleFrame.minY - screenMargin), 0)
         let x = max(min(anchor.minX, visibleFrame.maxX - contentSize.width - screenMargin),
                     visibleFrame.minX + screenMargin)
         return NSRect(x: x, y: top - height, width: contentSize.width, height: height)
+    }
+}
+
+private struct MenuSizeKey: PreferenceKey {
+    static var defaultValue: CGSize = .zero
+
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        value = nextValue()
     }
 }
 

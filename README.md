@@ -37,8 +37,10 @@ buttons inside it never closes it; click anywhere else to dismiss it.
   - Allow display sleep (keep only the system awake)
   - Allow sleep when the lid is closed (turn off for closed-lid mode)
   - Allow the screen saver after N minutes of inactivity
-- **Settings**: launch at login, start a session when Wakeful opens, notify
-  when a session ends, screen saver delay, end the session on low battery
+- **Settings** (a page that slides in): launch at login, start a session when
+  Wakeful opens, notify when a session ends, check for updates automatically
+  (off by default), screen saver delay, end the session on low battery
+- **Check for Updates** button at the bottom of the menu
 
 ## Requirements
 
@@ -118,7 +120,7 @@ To build the disk image locally, run `./scripts/build-app.sh` and then
 ## Sharing the app (e.g. from a NAS)
 
 Run `./scripts/release.sh`. It runs the tests, builds the app, and puts
-`Wakeful-<version>.zip`, `Wakeful-<version>-src.zip`, `SHA256SUMS.txt` and
+`Wakeful-<version>.dmg`, `Wakeful-<version>.zip`, `Wakeful-<version>-src.zip`, `SHA256SUMS.txt` and
 `VERSION.txt` in `Ready to NAS/`.
 Before that, it moves the previous release to `Ready to NAS/old/<version>_<date>/`.
 Set the version in `Resources/Info.plist` before releasing. Share the zip, not the raw `.app` folder, because
@@ -137,8 +139,18 @@ copying a bundle over SMB can strip permissions or add `._` files.
 
 ## Security notes
 
-- Wakeful has no network access, URL schemes, XPC services or document types,
-  so there is no remote attack surface.
+- Wakeful has no URL schemes, XPC services or document types, and it accepts
+  no incoming connections.
+- Its only network request is the update check: an HTTPS GET to
+  `api.github.com/repos/aminealichaouche/wakeful/releases/latest`. It runs only
+  when you click **Check for Updates**, or daily if you turn on **Check for
+  Updates Automatically** (off by default). It sends no cookies or personal
+  data, refuses redirects and caps the reply at 1 MB. GitHub sees your IP
+  address, as with any website.
+- The update check never downloads or runs anything. It only reads a version
+  number, which must be digits and dots. **View Release** opens
+  `github.com/aminealichaouche/wakeful/releases/tag/v<that version>` in your
+  browser, and you install updates yourself.
 - The only root actions are the one-time helper install and uninstall. They use
   fixed command text: no file name, app name or setting is ever inserted into
   them.
@@ -153,6 +165,7 @@ copying a bundle over SMB can strip permissions or add `._` files.
 swift test                                  # unit + stress tests, safe to run anytime
 WAKEFUL_PMSET_TESTS=1 swift test            # also toggles disablesleep for real (needs helper)
 WAKEFUL_APP_TESTS=1 swift test              # launches build/Wakeful.app and quits it every way
+WAKEFUL_NETWORK_TESTS=1 swift test          # makes the real update-check request to GitHub
 ```
 
 The opt-in suites always restore normal sleep and your Wakeful settings when
@@ -177,6 +190,7 @@ Sources/Wakeful/
   StatusIcon.swift          drawn menu bar icon
   Settings.swift            UserDefaults-backed preferences
   SystemInfo.swift          battery, idle time, screen saver, notifications
+  UpdateChecker.swift       "Check for Updates" against GitHub releases
 ```
 
 ## License

@@ -64,25 +64,59 @@ struct ActionRow: View {
     }
 }
 
-/// Row with a round icon that fills with the accent color when on (BetterDisplay style).
-struct ToggleRow: View {
+/// Icon + title row that opens another page, with a trailing chevron.
+struct NavigationRow: View {
     let icon: String
     let title: String
-    let isOn: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
+                RowIcon(icon: icon)
+                Text(title)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(height: 26)
+        }
+        .buttonStyle(RowButtonStyle())
+    }
+}
+
+/// Row with a round icon that fills with the accent color when on (BetterDisplay style).
+/// An optional detail line explains the option underneath the title.
+struct ToggleRow: View {
+    let icon: String
+    let title: String
+    let isOn: Bool
+    var detail: String?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: detail == nil ? .center : .top, spacing: 8) {
                 Image(systemName: icon)
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(isOn ? Color.white : Color.primary)
                     .frame(width: 22, height: 22)
                     .background(Circle().fill(isOn ? Color.accentColor : Color.primary.opacity(0.12)))
-                Text(title)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .frame(minHeight: 22)
+                    if let detail {
+                        Text(detail)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .transition(.opacity)
+                    }
+                }
                 Spacer(minLength: 0)
             }
-            .frame(height: 28)
+            .padding(.vertical, detail == nil ? 3 : 5)
         }
         .buttonStyle(RowButtonStyle())
         .accessibilityValue(isOn ? "On" : "Off")
@@ -177,6 +211,26 @@ struct SwitchRow: View {
         }
         .toggleStyle(.switch)
         .controlSize(.mini)
+    }
+}
+
+/// Small "i" that shows or hides explanations, filled while they're shown.
+struct InfoButton: View {
+    @Binding var isOn: Bool
+    @State private var isHovering = false
+
+    var body: some View {
+        Button { isOn.toggle() } label: {
+            Image(systemName: isOn ? "info.circle.fill" : "info.circle")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(isOn || isHovering ? Color.accentColor : .secondary)
+                .frame(width: 18, height: 18)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, 4)
+        .help(isOn ? "Hide explanations" : "Explain these options")
+        .onHover { isHovering = $0 }
     }
 }
 

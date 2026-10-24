@@ -11,6 +11,7 @@ final class Settings: ObservableObject {
         static let startSessionAtLaunch = "startSessionAtLaunch"
         static let notifyWhenSessionEnds = "notifyWhenSessionEnds"
         static let lowBatteryThreshold = "lowBatteryThreshold"
+        static let checkForUpdatesAutomatically = "checkForUpdatesAutomatically"
     }
 
     private let defaults: UserDefaults
@@ -25,6 +26,7 @@ final class Settings: ObservableObject {
             Key.startSessionAtLaunch: false,
             Key.notifyWhenSessionEnds: true,
             Key.lowBatteryThreshold: 0,
+            Key.checkForUpdatesAutomatically: false,
         ])
     }
 
@@ -64,5 +66,11 @@ final class Settings: ObservableObject {
     var lowBatteryThreshold: Int {
         get { min(max(defaults.integer(forKey: Key.lowBatteryThreshold), 0), 100) }
         set { objectWillChange.send(); defaults.set(newValue, forKey: Key.lowBatteryThreshold) }
+    }
+
+    /// Off by default: Wakeful makes no network requests unless asked to.
+    var checkForUpdatesAutomatically: Bool {
+        get { defaults.bool(forKey: Key.checkForUpdatesAutomatically) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.checkForUpdatesAutomatically) }
     }
 }

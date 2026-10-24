@@ -1,8 +1,9 @@
 #!/bin/sh
 # Tests, builds and packages a release into "Ready to NAS":
+#   Wakeful-<version>.dmg      the signed app as a disk image
 #   Wakeful-<version>.zip      the signed app
 #   Wakeful-<version>-src.zip  the source code (whitelisted files only; no build output or local state)
-#   SHA256SUMS.txt             checksums for both
+#   SHA256SUMS.txt             checksums for all three
 #   VERSION.txt                the app version
 # Whatever was there before is moved to "Ready to NAS/old/<version>_<timestamp>/".
 # Set SKIP_TESTS=1 to skip the test suite.
@@ -12,8 +13,9 @@ cd "$(dirname "$0")/.."
 
 READY="Ready to NAS"
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/Info.plist)
-SOURCE_FILES="Package.swift README.md LICENSE .gitignore Resources Sources Tests scripts"
+SOURCE_FILES="Package.swift README.md LICENSE .gitignore .github Resources Sources Tests scripts"
 APP_ZIP="Wakeful-$VERSION.zip"
+APP_DMG="Wakeful-$VERSION.dmg"
 SRC_ZIP="Wakeful-$VERSION-src.zip"
 
 if [ "${SKIP_TESTS:-0}" != "1" ]; then
@@ -21,6 +23,7 @@ if [ "${SKIP_TESTS:-0}" != "1" ]; then
 fi
 
 ./scripts/build-app.sh
+./scripts/make-dmg.sh
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
@@ -54,10 +57,11 @@ if [ -n "$(find "$READY" -maxdepth 1 -type f ! -name '.DS_Store' -print -quit)" 
     echo "Moved previous release to $OLD"
 fi
 
+cp "build/$APP_DMG" "$READY/$APP_DMG"
 cp "build/$APP_ZIP" "$READY/$APP_ZIP"
 cp "$WORK/$SRC_ZIP" "$READY/$SRC_ZIP"
 echo "$VERSION" > "$READY/VERSION.txt"
-(cd "$READY" && shasum -a 256 "$APP_ZIP" "$SRC_ZIP" > SHA256SUMS.txt)
+(cd "$READY" && shasum -a 256 "$APP_DMG" "$APP_ZIP" "$SRC_ZIP" > SHA256SUMS.txt)
 
 echo
 echo "Released Wakeful $VERSION to \"$READY\":"
