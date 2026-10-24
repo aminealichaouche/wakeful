@@ -47,7 +47,7 @@ final class SessionDescriptionTests: XCTestCase {
     func testManualSessions() {
         let indefinite = Session(trigger: .manual(until: nil))
         XCTAssertNil(indefinite.endDate)
-        XCTAssertEqual(indefinite.remainingDescription, "Indeterminate time remaining")
+        XCTAssertEqual(indefinite.remainingDescription, "On until you turn it off")
         XCTAssertNil(indefinite.triggerDescription, "manual sessions need no second line")
 
         let timed = Session(trigger: .manual(until: Date().addingTimeInterval(90)))
@@ -59,7 +59,7 @@ final class SessionDescriptionTests: XCTestCase {
         let url = URL(fileURLWithPath: "/tmp/some \"weird\" name'; rm -rf ~.crdownload")
         let session = Session(trigger: .download(DownloadWatcher(url: url)))
         XCTAssertEqual(session.triggerDescription, "While “some \"weird\" name'; rm -rf ~.crdownload” is downloading")
-        XCTAssertEqual(session.remainingDescription, "Indeterminate time remaining")
+        XCTAssertEqual(session.remainingDescription, "Active")
     }
 }
 

@@ -38,8 +38,15 @@ final class Session {
     }
 
     var remainingDescription: String {
-        guard let endDate else { return "Indeterminate time remaining" }
-        return "\(Format.duration(endDate.timeIntervalSinceNow)) remaining"
+        switch trigger {
+        case .manual(let until?):
+            return "\(Format.duration(until.timeIntervalSinceNow)) remaining"
+        case .manual(nil):
+            return "On until you turn it off"
+        case .app, .download:
+            // The line below says what the session is waiting for.
+            return "Active"
+        }
     }
 }
 
