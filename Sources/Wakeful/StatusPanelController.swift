@@ -49,15 +49,16 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
         // changes; on opening it's measured directly, since SwiftUI doesn't update hidden windows.
         // Top-aligned so content never jumps while the panel animates to a new height.
         hostingController = NSHostingController(rootView: AnyView(
-            MenuView(manager: manager, settings: settings, updater: updater, navigation: navigation)
-                .fixedSize(horizontal: false, vertical: true)
-                .background(GeometryReader { proxy in
-                    Color.clear.preference(key: MenuSizeKey.self, value: proxy.size)
-                })
-                .onPreferenceChange(MenuSizeKey.self) { [weak self] size in
-                    DispatchQueue.main.async { self?.contentSizeChanged(size) }
-                }
-                .frame(maxHeight: .infinity, alignment: .top)
+            PinnedToTop {
+                MenuView(manager: manager, settings: settings, updater: updater, navigation: navigation)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background(GeometryReader { proxy in
+                        Color.clear.preference(key: MenuSizeKey.self, value: proxy.size)
+                    })
+                    .onPreferenceChange(MenuSizeKey.self) { [weak self] size in
+                        DispatchQueue.main.async { self?.contentSizeChanged(size) }
+                    }
+            }
         ))
         hostingController.sizingOptions = []
         let hosting = hostingController.view
@@ -196,7 +197,7 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
     private func remeasure() {
         // Applies pending SwiftUI changes first; otherwise the size lags one change behind.
         hostingController.view.layoutSubtreeIfNeeded()
-        contentSizeChanged(hostingController.sizeThatFits(in: CGSize(width: MenuView.width, height: 0)))
+        contentSizeChanged(hostingController.sizeThatFits(in: CGSize(width: MenuView.width, height: .infinity)))
     }
 
     private func contentSizeChanged(_ size: CGSize) {
@@ -233,6 +234,26 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
         let x = max(min(anchor.minX, visibleFrame.maxX - contentSize.width - screenMargin),
                     visibleFrame.minX + screenMargin)
         return NSRect(x: x, y: top - height, width: contentSize.width, height: height)
+    }
+}
+
+/// Fills the height it's offered and pins the menu to the top. When the menu grows, it's briefly
+/// taller than the panel (which is still animating to its new height); the extra spills off the
+/// bottom, where the panel's edge hides it. A plain top-aligned frame would grow to fit instead,
+/// and the hosting view would center it, nudging the whole menu up for the length of the animation.
+/// Offered unlimited height, it reports the menu's own height, which is how the panel measures it.
+struct PinnedToTop: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let content = subviews.first?.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil)) ?? .zero
+        guard let height = proposal.height, height.isFinite else { return content }
+        return CGSize(width: content.width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for subview in subviews {
+            subview.place(at: bounds.origin, anchor: .topLeading,
+                          proposal: ProposedViewSize(width: bounds.width, height: nil))
+        }
     }
 }
 

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import Wakeful
 
@@ -43,5 +44,14 @@ final class StatusPanelLayoutTests: XCTestCase {
         let frame = StatusPanelController.panelFrame(contentSize: CGSize(width: 300, height: 500), below: secondIcon, in: secondVisible)
         XCTAssertEqual(frame.maxY, secondIcon.minY - StatusPanelController.gapBelowMenuBar)
         XCTAssertTrue(secondVisible.contains(frame))
+    }
+
+    /// While the panel animates taller, the menu must stay pinned to the top rather than grow past
+    /// the panel (which makes the hosting view center it and nudge everything up).
+    func testMenuStaysPinnedToTopWhileTallerThanPanel() {
+        let menu = NSHostingController(rootView: PinnedToTop { Color.red.frame(width: 300, height: 453) })
+        XCTAssertEqual(menu.sizeThatFits(in: CGSize(width: 300, height: 437)).height, 437, "must not grow past the panel")
+        XCTAssertEqual(menu.sizeThatFits(in: CGSize(width: 300, height: 600)).height, 600, "fills a taller panel")
+        XCTAssertEqual(menu.sizeThatFits(in: CGSize(width: 300, height: CGFloat.infinity)).height, 453, "measures the menu")
     }
 }
