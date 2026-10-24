@@ -1,4 +1,8 @@
-# Wakeful
+<p align="center">
+  <img src="Resources/AppIcon.png" alt="Wakeful app icon" width="160">
+</p>
+
+<h1 align="center">Wakeful</h1>
 
 A free, open-source menu bar app that keeps your Mac awake, inspired by
 [Amphetamine](https://apps.apple.com/us/app/amphetamine/id937984704). Start a
@@ -6,6 +10,14 @@ session with one click, or choose a duration.
 
 Wakeful is an independent project and is not affiliated with Amphetamine or
 its developer.
+
+## Download
+
+Get `Wakeful-<version>.dmg` from the
+[latest release](https://github.com/aminealichaouche/wakeful/releases/latest),
+open it and drag Wakeful to Applications. The app is ad-hoc signed rather than
+signed with an Apple Developer ID, so the first time you open it macOS will
+refuse. Go to System Settings → Privacy & Security and click **Open Anyway**.
 
 ## Features
 
@@ -89,6 +101,19 @@ sudo pmset -a disablesleep 0
 
 Keeping a closed laptop awake in a bag can overheat it. Consider setting
 **End on Low Battery** under Settings.
+
+## Releasing
+
+Bump `CFBundleShortVersionString` (and `CFBundleVersion`) in
+`Resources/Info.plist`, commit and push to `main`. The
+[Release workflow](.github/workflows/release.yml) sees a version with no
+release yet, runs the tests, builds the app and publishes release `v<version>`
+with `Wakeful-<version>.dmg`, `Wakeful-<version>.zip` and `SHA256SUMS.txt`.
+GitHub adds the source code archives itself. Pushes that don't change the
+version do nothing.
+
+To build the disk image locally, run `./scripts/build-app.sh` and then
+`./scripts/make-dmg.sh`.
 
 ## Sharing the app (e.g. from a NAS)
 
