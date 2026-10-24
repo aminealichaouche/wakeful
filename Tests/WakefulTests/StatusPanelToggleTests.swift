@@ -57,4 +57,12 @@ final class StatusPanelToggleTests: XCTestCase {
             XCTAssertEqual(controller.isPanelVisible, !i.isMultiple(of: 2))
         }
     }
+
+    /// With keyboard navigation on, a focused control would show a blue ring as soon as the menu opens.
+    func testOpensWithNothingFocused() {
+        controller.showPanel()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        let responder = controller.panelFirstResponder
+        XCTAssertTrue(responder == nil || responder is NSWindow, "focused: \(String(describing: responder))")
+    }
 }

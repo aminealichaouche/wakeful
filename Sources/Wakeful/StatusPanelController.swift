@@ -92,6 +92,7 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
 
     var isPanelVisible: Bool { isOpen }
     var panelFrame: NSRect { panel.frame }
+    var panelFirstResponder: NSResponder? { panel.firstResponder }
 
     // MARK: - Showing and hiding
 
@@ -117,6 +118,13 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
             panel.setFrame(Self.reduceMotion ? frame : frame.offsetBy(dx: 0, dy: Self.slideDistance), display: false)
         }
         panel.makeKeyAndOrderFront(nil)
+        // Open with nothing focused, like a menu: with keyboard navigation turned on, macOS would
+        // otherwise draw a focus ring around the first control. Tab still moves into the menu.
+        panel.makeFirstResponder(nil)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isOpen else { return }
+            self.panel.makeFirstResponder(nil)
+        }
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = Self.openDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
