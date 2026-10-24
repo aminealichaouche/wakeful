@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Amphetamine Mac Clone}",
+            "name": "Debug Wakeful",
+            "target": "Wakeful",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Wakeful"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:Amphetamine Mac Clone}",
+            "name": "Release Wakeful",
+            "target": "Wakeful",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Wakeful"
+        }
+    ]
+}
