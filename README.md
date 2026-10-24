@@ -11,6 +11,12 @@ session with one click, or choose a duration.
 Wakeful is an independent project and is not affiliated with Amphetamine or
 its developer.
 
+<p align="center">
+  <img src="docs/screenshots/menu.png" alt="Wakeful menu" width="300">
+  <img src="docs/screenshots/session.png" alt="Wakeful during a session" width="300">
+  <img src="docs/screenshots/settings.png" alt="Wakeful settings" width="300">
+</p>
+
 ## Download
 
 Get `Wakeful-<version>.dmg` from the
