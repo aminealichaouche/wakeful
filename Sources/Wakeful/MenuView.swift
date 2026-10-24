@@ -51,6 +51,9 @@ struct MenuView: View {
         .animation(reduceMotion ? nil : animation, value: page)
         .animation(animation, value: navigation.expanded)
         .animation(animation, value: navigation.showsOptionHelp)
+        // Starting or ending a session adds or removes a line in the card; animating it keeps the
+        // footer moving with the panel's edge instead of jumping below it.
+        .animation(animation, value: manager.isActive)
     }
 
     private func pageContainer<Content: View>(_ which: Page, @ViewBuilder content: () -> Content) -> some View {
