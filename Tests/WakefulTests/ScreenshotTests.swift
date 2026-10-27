@@ -41,6 +41,13 @@ final class ScreenshotTests: XCTestCase {
         ])
         navigation.page = .rule
         try render(menu, "4-custom-rule")
+        navigation.page = .main
+        manager.start(.rule(CustomRule(conditions: [.externalDrive(nil)])))
+        try render(menu, "5-rule-session")
+        manager.start(.rule(CustomRule(match: .any, conditions: [
+            .networkDrive(DriveChoice(id: "nas.local/Everything", name: "Everything")), .charger, .audioPlaying,
+        ])))
+        try render(menu, "6-long-rule-session")
     }
 
     /// Draws the menu on the panel's own menu material, as it appears under the menu bar.

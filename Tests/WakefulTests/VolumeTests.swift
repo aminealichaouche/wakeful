@@ -44,6 +44,14 @@ final class VolumeClassificationTests: XCTestCase {
 
     func testPhysicalExternalDrives() {
         XCTAssertEqual(Volumes.classify(local("/Volumes/T7", disk: usbDrive)), .external)
+        // Recorded from a real SanDisk Extreme SSD (exFAT over USB, mounted through FSKit).
+        let extreme = DiskRecord(model: "Extreme 55DD", protocolName: "USB", isInternal: false,
+                                 uuid: "B94C3251-241C-3F37-98B4-D5AC8847C438", name: "EXTREME SSD",
+                                 devicePath: "IOService:/AppleARMPE/arm-io@10F00000/AppleH16GFamilyIO/usb-drd0@2280000/AppleT8132USBXHCI@00000000/usb-drd0-port-ss@00200000/USB3.1 Hub@00200000/AppleUSB30Hub@00200000/AppleUSB30HubPort@00210000/Extreme 55DD@00210000/IOUSBHostInterface@0/IOUSBMassStorageInterfaceNub/IOUSBMassStorageDriverNub/IOUSBMassStorageUASDriver/IOSCSITargetDevice/IOSCSIHierarchicalLogicalUnit@0000000000000000/IOSCSIPeripheralDeviceType00/IOBlockStorageServices")
+        let extremeVolume = Volumes.volume(for: local("/Volumes/EXTREME SSD", fs: "exfat", disk: extreme))
+        XCTAssertEqual(extremeVolume?.kind, .external)
+        XCTAssertEqual(extremeVolume?.id, "B94C3251-241C-3F37-98B4-D5AC8847C438")
+        XCTAssertEqual(extremeVolume?.name, "EXTREME SSD")
         var thunderbolt = usbDrive
         thunderbolt.protocolName = "PCI-Express"
         XCTAssertEqual(Volumes.classify(local("/Volumes/TB", disk: thunderbolt)), .external)

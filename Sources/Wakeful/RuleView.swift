@@ -12,6 +12,9 @@ final class RuleMonitor: ObservableObject {
 
     private var timer: Timer?
     private var isCapturing = false
+    private var needsAnotherCapture = false
+    /// Refreshes the lists the moment a drive is plugged in or an app opens.
+    private lazy var changes = SystemChangeMonitor { [weak self] in self?.refresh() }
     private let queue = DispatchQueue(label: "io.github.wakeful.rule-monitor")
     private let provider: (Set<RuleCondition.Kind>, Set<String>) -> SystemSnapshot
 
@@ -26,7 +29,11 @@ final class RuleMonitor: ObservableObject {
     func setActive(_ active: Bool) {
         timer?.invalidate()
         timer = nil
-        guard active else { return }
+        guard active else {
+            changes.stop()
+            return
+        }
+        changes.start()
         refresh()
         let timer = Timer(timeInterval: Self.refreshInterval, repeats: true) { [weak self] _ in self?.refresh() }
         RunLoop.main.add(timer, forMode: .common)
@@ -40,7 +47,10 @@ final class RuleMonitor: ObservableObject {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         if running != apps { apps = running }
 
-        guard !isCapturing else { return }
+        guard !isCapturing else {
+            needsAnotherCapture = true
+            return
+        }
         isCapturing = true
         let ids = SystemSnapshot.runningBundleIDs()
         let provider = provider
@@ -50,6 +60,10 @@ final class RuleMonitor: ObservableObject {
                 guard let self else { return }
                 isCapturing = false
                 if snapshot != self.snapshot { self.snapshot = snapshot }
+                if needsAnotherCapture {
+                    needsAnotherCapture = false
+                    refresh()
+                }
             }
         }
     }

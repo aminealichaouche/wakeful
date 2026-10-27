@@ -1,23 +1,25 @@
 import AppKit
 import Combine
 
-/// Runs the custom rule. While any of its conditions is switched on, it checks the rule every few
-/// seconds and keeps a session going whenever the rule is met:
+/// Runs the custom rule. While any of its conditions is switched on, it checks the rule the moment
+/// something relevant changes (see `SystemChangeMonitor`), and every few seconds as a backup, and
+/// keeps a session going whenever the rule is met:
 ///
 /// - Rule met and nothing else running: starts a session.
-/// - Rule no longer met for `gracePeriod`: ends that session, so a drive or share that drops for a
-///   moment (a NAS reconnecting) doesn't end it.
+/// - Rule no longer met: ends that session, right away for most conditions, or after a few
+///   seconds for network shares and audio, which drop out briefly on their own (a NAS
+///   reconnecting, a pause between songs).
 /// - A session started by hand is never replaced or ended.
 /// - If you end (or replace) a rule session yourself, it stays off until the rule next stops being
 ///   met, instead of starting again a moment later.
 final class RuleAutomation {
     static let defaultPollInterval: TimeInterval = 2
-    static let defaultGracePeriod: TimeInterval = 5
 
     private let manager: SessionManager
     private let settings: Settings
     private let pollInterval: TimeInterval
-    let gracePeriod: TimeInterval
+    /// Overrides each condition's own grace period (tests use this).
+    let gracePeriod: TimeInterval?
     private let snapshotProvider: (Set<RuleCondition.Kind>, Set<String>) -> SystemSnapshot
     /// Rule checks list mounted volumes and query audio devices, so they run off the main thread.
     private let queue = DispatchQueue(label: "io.github.wakeful.rule-automation")
@@ -25,7 +27,10 @@ final class RuleAutomation {
     private var timer: Timer?
     private var subscriptions: [AnyCancellable] = []
     private var isChecking = false
+    /// Something changed while a check was running, so its result may already be out of date.
+    private var needsAnotherCheck = false
     private var unmetSince: Date?
+    private lazy var changes = SystemChangeMonitor { [weak self] in self?.check() }
     /// Set when the user ends or replaces a rule session; cleared once the rule stops being met.
     private(set) var isSuppressed = false
     /// True while this class itself starts or ends a session, so it isn't mistaken for the user.
@@ -34,7 +39,7 @@ final class RuleAutomation {
 
     init(manager: SessionManager, settings: Settings,
          pollInterval: TimeInterval = RuleAutomation.defaultPollInterval,
-         gracePeriod: TimeInterval = RuleAutomation.defaultGracePeriod,
+         gracePeriod: TimeInterval? = nil,
          snapshotProvider: @escaping (Set<RuleCondition.Kind>, Set<String>) -> SystemSnapshot = SystemSnapshot.capture) {
         self.manager = manager
         self.settings = settings
@@ -63,7 +68,11 @@ final class RuleAutomation {
         timer?.invalidate()
         timer = nil
         subscriptions = []
+        changes.stop()
     }
+
+    /// True while system change notifications are being watched (only while the rule is on).
+    var isWatchingChanges: Bool { changes.isRunning }
 
     private var rule: CustomRule { settings.customRule }
 
@@ -78,6 +87,7 @@ final class RuleAutomation {
         guard rule.isArmed else {
             timer?.invalidate()
             timer = nil
+            changes.stop()
             isSuppressed = false
             unmetSince = nil
             if ruleSession != nil { changeSession { manager.end() } }
@@ -88,6 +98,7 @@ final class RuleAutomation {
             RunLoop.main.add(timer, forMode: .common)
             self.timer = timer
         }
+        changes.start()
         check()
     }
 
@@ -104,7 +115,11 @@ final class RuleAutomation {
 
     /// Checks the rule now (it's also checked every `pollInterval` seconds).
     func check() {
-        guard rule.isArmed, !isChecking else { return }
+        guard rule.isArmed else { return }
+        guard !isChecking else {
+            needsAnotherCheck = true
+            return
+        }
         isChecking = true
         let kinds = rule.watchedKinds
         let apps = kinds.contains(.appRunning) ? SystemSnapshot.runningBundleIDs() : []
@@ -115,6 +130,10 @@ final class RuleAutomation {
                 guard let self else { return }
                 isChecking = false
                 apply(snapshot)
+                if needsAnotherCheck {
+                    needsAnotherCheck = false
+                    check()
+                }
             }
         }
     }
@@ -142,14 +161,20 @@ final class RuleAutomation {
             unmetSince = nil
             return
         }
+        let unmet = armed.conditions.filter { !$0.isMet(in: snapshot) }
+        let grace = gracePeriod ?? unmet.map(\.kind.gracePeriod).max() ?? 0
         let now = Date()
         let since = unmetSince ?? now
         unmetSince = since
-        guard now.timeIntervalSince(since) >= gracePeriod else { return }
+        let remaining = grace - now.timeIntervalSince(since)
+        guard remaining <= 0 else {
+            // Look again the moment the grace period runs out rather than at the next poll.
+            DispatchQueue.main.asyncAfter(deadline: .now() + remaining + 0.05) { [weak self] in self?.check() }
+            return
+        }
         unmetSince = nil
-        let unmet = armed.conditions.first { !$0.isMet(in: snapshot) }
         changeSession {
-            manager.end(reason: unmet.map { "No longer true: \($0.phrase)." } ?? "The rule is no longer met.")
+            manager.end(reason: unmet.first.map { "No longer true: \($0.phrase)." } ?? "The rule is no longer met.")
         }
     }
 

@@ -38,6 +38,15 @@ enum RuleCondition: Codable, Hashable {
             }
         }
 
+        /// How long this may be false before a session it keeps going ends. Network shares
+        /// reconnect and music pauses between tracks; the rest change only when you change them.
+        var gracePeriod: TimeInterval {
+            switch self {
+            case .networkDrive, .audioPlaying: return 5
+            case .externalDrive, .charger, .externalDisplay, .appRunning: return 0
+            }
+        }
+
         var icon: String {
             switch self {
             case .externalDrive: return "externaldrive"

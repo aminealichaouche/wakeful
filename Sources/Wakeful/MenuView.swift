@@ -210,7 +210,32 @@ private struct SessionCard: View {
     @ObservedObject var manager: SessionManager
     @State private var isHovering = false
 
+    /// Icon width plus spacing, so the description lines up under the title.
+    private static let textInset: CGFloat = 32
+
     var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            header
+            // Its own line across the card, so a long description isn't squeezed into the narrow
+            // column between the icon and the switch.
+            if let trigger = manager.session?.triggerDescription {
+                Text(trigger)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, Self.textInset)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(.primary.opacity(isHovering ? 0.11 : 0.07)))
+        .onHover { isHovering = $0 }
+    }
+
+    private var header: some View {
         HStack(alignment: .top, spacing: 10) {
             // Everything but the switch is one big button that does the same as the switch.
             Button(action: toggle) {
@@ -228,11 +253,6 @@ private struct SessionCard: View {
                             TimelineView(.periodic(from: .now, by: 1)) { _ in
                                 Text(session.remainingDescription)
                                     .monospacedDigit()
-                            }
-                            if let trigger = session.triggerDescription {
-                                Text(trigger)
-                                    .lineLimit(2)
-                                    .truncationMode(.middle)
                             }
                         } else {
                             Text("Inactive")
@@ -256,10 +276,6 @@ private struct SessionCard: View {
             .labelsHidden()
             .controlSize(.small)
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(.primary.opacity(isHovering ? 0.11 : 0.07)))
-        .onHover { isHovering = $0 }
     }
 
     private func toggle() {

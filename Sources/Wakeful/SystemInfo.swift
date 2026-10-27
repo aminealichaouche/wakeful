@@ -58,7 +58,7 @@ enum AudioOutput {
         AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
     }
 
-    private static func devices() -> [AudioDeviceID] {
+    static func devices() -> [AudioDeviceID] {
         var address = address(kAudioHardwarePropertyDevices)
         var size: UInt32 = 0
         let system = AudioObjectID(kAudioObjectSystemObject)

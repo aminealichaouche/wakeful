@@ -79,15 +79,21 @@ the conditions you turn on are true:
 - Each condition's round bubble is its on/off switch. New conditions start off
   (grey); click the bubble to turn one on (blue). Off conditions are ignored, and
   the menu shows **On** next to **While Custom Rule…** while any is on.
-- While the rule is on, Wakeful starts a session by itself whenever the rule is
-  true, and ends it once the rule has been false for 5 seconds. A share that
-  drops out for a moment, such as a NAS reconnecting, doesn't end it.
+- While the rule is on, Wakeful starts a session by itself the moment the rule
+  becomes true, and ends it when the rule stops being true.
+- Network drives and audio get 5 seconds to come back before the session ends,
+  so a NAS reconnecting or a pause between songs doesn't end it. Unplugging a
+  drive or the charger, disconnecting a display or quitting an app ends it right
+  away.
 - It never replaces or ends a session you started yourself. If you end a rule
   session yourself, it stays off until the rule next becomes false, so it
   doesn't start again straight away.
 - Rules saved by version 1.2.0 load with every condition switched off.
-- Wakeful checks the rule every 2 seconds without touching the drives
-  themselves, so an unresponsive network share can't freeze it.
+- Wakeful reacts to macOS's own change events (drives mounting and unmounting,
+  apps launching and quitting, power source, display and audio changes) and
+  re-checks within milliseconds. It also checks every 2 seconds as a backup. It
+  never touches the drives themselves, so an unresponsive network share can't
+  freeze it.
 
 ## Requirements
 
@@ -258,6 +264,7 @@ Sources/Wakeful/
   SystemInfo.swift          battery, power source, displays, audio, idle time, notifications
   CustomRule.swift          custom rule conditions, on/off switches, all/any matching, system snapshots
   RuleAutomation.swift      runs the custom rule: starts and ends sessions as it becomes true or false
+  SystemChangeMonitor.swift mount, app, power, display and audio change events that trigger rule checks
   RuleView.swift            the "While Custom Rule" page
   Volumes.swift             mounted volumes: external drives, network shares, disk images
   Edition.swift             standard or offline edition
