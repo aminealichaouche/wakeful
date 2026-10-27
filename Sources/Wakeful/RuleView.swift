@@ -55,58 +55,50 @@ final class RuleMonitor: ObservableObject {
     }
 }
 
-/// "While Custom Rule…": pick conditions, then start a session that lasts while they hold.
+/// "While Custom Rule…": conditions with on/off bubbles. While any is on, Wakeful keeps the Mac
+/// awake automatically whenever the rule is met (see `RuleAutomation`).
 struct RulePage: View {
-    @ObservedObject var manager: SessionManager
     @ObservedObject var settings: Settings
     let isVisible: Bool
     let onBack: () -> Void
     @StateObject private var monitor = RuleMonitor()
 
     private var rule: CustomRule { settings.customRule }
-    private var isMet: Bool { rule.isMet(in: monitor.snapshot) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             PageHeader(title: "While Custom Rule", onBack: onBack)
 
             VStack(alignment: .leading, spacing: 8) {
-                matchLine
+                Text(rule.items.isEmpty
+                     ? "Add conditions, then turn them on. Your Mac stays awake automatically while they're true."
+                     : "Turn conditions on (blue) to keep your Mac awake automatically while they're true. Off ones are ignored.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                if rule.conditions.isEmpty {
-                    Text("Add conditions below. Your Mac stays awake while they're true, and the session ends a few seconds after they stop being true.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
+                if rule.items.count > 1 {
+                    HStack(spacing: 4) {
+                        Text("Keep awake while")
+                        Picker("Match", selection: binding(\.match)) {
+                            Text("all").tag(CustomRule.Match.all)
+                            Text("any").tag(CustomRule.Match.any)
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        Text("are true")
+                    }
+                }
+
+                if !rule.items.isEmpty {
                     VStack(spacing: 6) {
-                        ForEach(Array(rule.conditions.enumerated()), id: \.offset) { index, condition in
-                            conditionRow(condition, at: index)
+                        ForEach(Array(rule.items.enumerated()), id: \.offset) { index, item in
+                            conditionRow(item, at: index)
                         }
                     }
                 }
 
                 addMenu
-
-                Divider()
-
-                HStack(spacing: 6) {
-                    Image(systemName: isMet ? "checkmark.circle.fill" : "circle.dashed")
-                        .foregroundStyle(isMet ? Color.green : .secondary)
-                    Text(statusText)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 0)
-                    Button("Start") {
-                        manager.start(.rule(rule))
-                        onBack()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!isMet)
-                    .help(isMet ? "Keep your Mac awake while this rule is true"
-                                : "The rule has to be true right now to start")
-                }
             }
             .font(.system(size: 12))
             .controlSize(.small)
@@ -118,47 +110,36 @@ struct RulePage: View {
         .onDisappear { monitor.setActive(false) }
     }
 
-    private var statusText: String {
-        if rule.conditions.isEmpty { return "No conditions yet" }
-        return isMet ? "True right now" : "Not true right now"
-    }
-
-    @ViewBuilder private var matchLine: some View {
-        if rule.conditions.count > 1 {
-            HStack(spacing: 4) {
-                Text("Keep awake while")
-                Picker("Match", selection: binding(\.match)) {
-                    Text("all").tag(CustomRule.Match.all)
-                    Text("any").tag(CustomRule.Match.any)
-                }
-                .labelsHidden()
-                .fixedSize()
-                Text("of these are true:")
-            }
-        } else {
-            Text("Keep awake while this is true:")
-        }
-    }
-
     // MARK: - Conditions
 
-    private func conditionRow(_ condition: RuleCondition, at index: Int) -> some View {
-        let met = condition.isMet(in: monitor.snapshot)
+    private func conditionRow(_ item: CustomRule.Item, at index: Int) -> some View {
+        let condition = item.condition
         return HStack(alignment: .top, spacing: 8) {
-            Image(systemName: condition.kind.icon)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(met ? Color.white : Color.primary)
-                .frame(width: 22, height: 22)
-                .background(Circle().fill(met ? Color.accentColor : Color.primary.opacity(0.12)))
-                .help(met ? "True right now" : "Not true right now")
+            // The bubble is the condition's on/off switch, like the Session Options above.
+            Button {
+                updateRule { $0.items[index].isOn.toggle() }
+            } label: {
+                Image(systemName: condition.kind.icon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(item.isOn ? Color.white : Color.primary)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(item.isOn ? Color.accentColor : Color.primary.opacity(0.12)))
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help(item.isOn ? "On: click to turn off" : "Off: click to turn on")
+            .accessibilityLabel(condition.kind.title)
+            .accessibilityValue(item.isOn ? "On" : "Off")
+
             VStack(alignment: .leading, spacing: 3) {
                 Text(condition.kind.title)
                     .frame(minHeight: 22)
+                    .onTapGesture { updateRule { $0.items[index].isOn.toggle() } }
                 choicePicker(for: condition, at: index)
             }
             Spacer(minLength: 0)
             Button {
-                updateRule { $0.conditions.remove(at: index) }
+                updateRule { $0.items.remove(at: index) }
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.secondary)
@@ -170,22 +151,21 @@ struct RulePage: View {
             .accessibilityLabel("Remove \(condition.kind.title)")
         }
         .accessibilityElement(children: .contain)
-        .accessibilityValue(met ? "True right now" : "Not true right now")
     }
 
     @ViewBuilder private func choicePicker(for condition: RuleCondition, at index: Int) -> some View {
         switch condition {
         case .externalDrive(let drive):
             drivePicker(kind: .external, anyTitle: "Any External Drive", choice: drive) { updated in
-                updateRule { $0.conditions[index] = .externalDrive(updated) }
+                updateRule { $0.items[index].condition = .externalDrive(updated) }
             }
         case .networkDrive(let share):
             drivePicker(kind: .network, anyTitle: "Any Network Drive", choice: share) { updated in
-                updateRule { $0.conditions[index] = .networkDrive(updated) }
+                updateRule { $0.items[index].condition = .networkDrive(updated) }
             }
         case .appRunning(let app):
             appPicker(choice: app) { updated in
-                updateRule { $0.conditions[index] = .appRunning(updated) }
+                updateRule { $0.items[index].condition = .appRunning(updated) }
             }
         case .charger, .externalDisplay, .audioPlaying:
             EmptyView()
@@ -252,7 +232,7 @@ struct RulePage: View {
         .buttonStyle(.borderless)
         .menuIndicator(.hidden)
         .fixedSize()
-        .disabled(rule.conditions.count >= CustomRule.maxConditions)
+        .disabled(rule.items.count >= CustomRule.maxConditions)
     }
 
     private func add(_ kind: RuleCondition.Kind) {
@@ -267,9 +247,11 @@ struct RulePage: View {
             guard let first = monitor.apps.first else { return }
             condition = .appRunning(first)
         }
+        // New conditions start off; turning them on is a separate, deliberate step.
         updateRule { rule in
-            guard rule.conditions.count < CustomRule.maxConditions, !rule.conditions.contains(condition) else { return }
-            rule.conditions.append(condition)
+            guard rule.items.count < CustomRule.maxConditions,
+                  !rule.items.contains(where: { $0.condition == condition }) else { return }
+            rule.items.append(CustomRule.Item(condition: condition))
         }
     }
 

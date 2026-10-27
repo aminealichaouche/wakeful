@@ -64,10 +64,11 @@ struct ActionRow: View {
     }
 }
 
-/// Icon + title row that opens another page, with a trailing chevron.
+/// Icon + title row that opens another page, with a trailing chevron and optional status text.
 struct NavigationRow: View {
     let icon: String
     let title: String
+    var detail: String?
     let action: () -> Void
 
     var body: some View {
@@ -76,6 +77,11 @@ struct NavigationRow: View {
                 RowIcon(icon: icon)
                 Text(title)
                 Spacer(minLength: 0)
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)

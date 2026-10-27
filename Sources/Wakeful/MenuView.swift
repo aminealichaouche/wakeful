@@ -52,7 +52,7 @@ struct MenuView: View {
                 #endif
             }
             pageContainer(.rule) {
-                RulePage(manager: manager, settings: settings, isVisible: page == .rule) { navigation.page = .main }
+                RulePage(settings: settings, isVisible: page == .rule) { navigation.page = .main }
             }
         }
         .frame(width: Self.width * 3, alignment: .topLeading)
@@ -137,7 +137,8 @@ struct MenuView: View {
                         manager.start(.download(DownloadWatcher(url: url)))
                     }
                 }
-                NavigationRow(icon: "slider.horizontal.3", title: "While Custom Rule…") {
+                NavigationRow(icon: "slider.horizontal.3", title: "While Custom Rule…",
+                              detail: settings.customRule.isArmed ? "On" : nil) {
                     navigation.page = .rule
                 }
             }

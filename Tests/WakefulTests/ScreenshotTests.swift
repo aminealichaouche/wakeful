@@ -35,7 +35,10 @@ final class ScreenshotTests: XCTestCase {
         navigation.page = .settings
         try render(menu, "3-settings")
         manager.end()
-        settings.customRule = CustomRule(match: .all, conditions: [.networkDrive(nil), .charger])
+        settings.customRule = CustomRule(match: .all, items: [
+            CustomRule.Item(condition: .appRunning(AppChoice(bundleID: "com.apple.finder", name: "Finder")), isOn: true),
+            CustomRule.Item(condition: .externalDrive(nil), isOn: false),
+        ])
         navigation.page = .rule
         try render(menu, "4-custom-rule")
     }

@@ -94,14 +94,19 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
         iconSubscription = manager.$session.sink { [weak self] session in
             self?.statusItem.button?.image = session == nil ? StatusIcon.inactive : StatusIcon.active
         }
-        // These change the menu's height. Measure once the change has landed.
+        // These change the menu's height (settings include the custom rule, whose page grows with
+        // each condition). Measure once the change has landed.
         for publisher in [navigation.objectWillChange.eraseToAnyPublisher(),
-                          manager.$session.map { _ in () }.eraseToAnyPublisher()] {
+                          manager.$session.map { _ in () }.eraseToAnyPublisher(),
+                          settings.objectWillChange.eraseToAnyPublisher()] {
             layoutSubscriptions.append(publisher.sink { [weak self] in
                 DispatchQueue.main.async { self?.remeasure() }
             })
         }
     }
+
+    /// Tests pin where the icon is: on a full menu bar the real one can be hidden behind the notch.
+    var iconFrameOverride: NSRect?
 
     var isPanelVisible: Bool { isOpen }
     var panelFrame: NSRect { panel.frame }
@@ -232,6 +237,9 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
 
     /// Where the panel sits when fully open, or nil if the icon isn't on screen yet.
     private func targetFrame() -> NSRect? {
+        if let anchor = iconFrameOverride, let screen = NSScreen.main {
+            return Self.panelFrame(contentSize: contentSize, below: anchor, in: screen.visibleFrame)
+        }
         guard let button = statusItem.button, let buttonWindow = button.window,
               let screen = buttonWindow.screen ?? NSScreen.main
         else { return nil }

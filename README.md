@@ -59,8 +59,8 @@ buttons inside it never closes it; click anywhere else to dismiss it.
 
 ### Custom rules
 
-**While Custom Rule…** keeps the Mac awake while all (or any) of the conditions
-you pick are true:
+**While Custom Rule…** keeps the Mac awake automatically while all (or any) of
+the conditions you turn on are true:
 
 | Condition | Options |
 | --- | --- |
@@ -76,9 +76,16 @@ you pick are true:
   and neither do system volumes or the startup disk.
 - Specific drives are remembered by volume UUID, so another drive with the same
   name doesn't match. Network shares are remembered by server and share name.
-- The rule page shows live which conditions are true. You can start once the rule
-  is true, and the session ends when it has been false for 5 seconds. A share
-  that drops out for a moment, such as a NAS reconnecting, doesn't end it.
+- Each condition's round bubble is its on/off switch. New conditions start off
+  (grey); click the bubble to turn one on (blue). Off conditions are ignored, and
+  the menu shows **On** next to **While Custom Rule…** while any is on.
+- While the rule is on, Wakeful starts a session by itself whenever the rule is
+  true, and ends it once the rule has been false for 5 seconds. A share that
+  drops out for a moment, such as a NAS reconnecting, doesn't end it.
+- It never replaces or ends a session you started yourself. If you end a rule
+  session yourself, it stays off until the rule next becomes false, so it
+  doesn't start again straight away.
+- Rules saved by version 1.2.0 load with every condition switched off.
 - Wakeful checks the rule every 2 seconds without touching the drives
   themselves, so an unresponsive network share can't freeze it.
 
@@ -249,7 +256,8 @@ Sources/Wakeful/
   StatusIcon.swift          drawn menu bar icon
   Settings.swift            UserDefaults-backed preferences
   SystemInfo.swift          battery, power source, displays, audio, idle time, notifications
-  CustomRule.swift          custom rule conditions, all/any matching, system snapshots
+  CustomRule.swift          custom rule conditions, on/off switches, all/any matching, system snapshots
+  RuleAutomation.swift      runs the custom rule: starts and ends sessions as it becomes true or false
   RuleView.swift            the "While Custom Rule" page
   Volumes.swift             mounted volumes: external drives, network shares, disk images
   Edition.swift             standard or offline edition

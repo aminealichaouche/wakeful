@@ -3,11 +3,13 @@ import SwiftUI
 import XCTest
 @testable import Wakeful
 
-/// Sessions started from a custom rule, driven by a fake system state.
-final class RuleSessionTests: XCTestCase {
+/// The custom rule running automatically, driven by a fake system state.
+final class RuleAutomationTests: XCTestCase {
     private var settings: Wakeful.Settings!
     private var cleanupSettings: (() -> Void)!
-    /// Read from the manager's background queue while tests change it, so it's behind a lock.
+    private var manager: SessionManager!
+    private var automation: RuleAutomation?
+    /// Read from the automation's background queue while tests change it, so it's behind a lock.
     private let lock = NSLock()
     private var _state = SystemSnapshot()
     private var _requested: [Set<RuleCondition.Kind>] = []
@@ -17,140 +19,250 @@ final class RuleSessionTests: XCTestCase {
     }
     private var requested: [Set<RuleCondition.Kind>] { lock.withLock { _requested } }
 
+    private static let poll: TimeInterval = 0.2
+    /// A few checks' worth of time.
+    private let settle: TimeInterval = 1.2
+    private let drive = MountedVolume(kind: .external, id: "UUID-T7", name: "T7", mountPoint: "/Volumes/T7")
+
     override func setUp() {
         (settings, cleanupSettings) = makeTestSettings()
+        manager = SessionManager(settings: settings, closedDisplayGuard: ClosedDisplayGuard(directory: makeTempDirectory()))
         state = SystemSnapshot()
         lock.withLock { _requested = [] }
     }
 
     override func tearDown() {
+        automation?.stop()
+        automation = nil
+        manager.end()
+        XCTAssertEqual(wakefulAssertionTypes(), [], "assertion leaked")
         cleanupSettings()
     }
 
-    private func makeManager(grace: TimeInterval) -> SessionManager {
-        SessionManager(settings: settings, closedDisplayGuard: ClosedDisplayGuard(directory: makeTempDirectory()),
-                       ruleGracePeriod: grace) { [unowned self] kinds, apps in
+    private func startAutomation(grace: TimeInterval = 0) {
+        let automation = RuleAutomation(manager: manager, settings: settings, pollInterval: Self.poll,
+                                        gracePeriod: grace) { [unowned self] kinds, apps in
             lock.withLock { _requested.append(kinds) }
             var snapshot = state
             if kinds.contains(.appRunning) { snapshot.runningBundleIDs = apps }
             return snapshot
         }
+        automation.start()
+        self.automation = automation
     }
 
-    private let drive = MountedVolume(kind: .external, id: "UUID-T7", name: "T7", mountPoint: "/Volumes/T7")
-    /// Two polls (every 2s) plus slack.
-    private let pollWait = TimeInterval(SessionManager.rulePollInterval * 2) + 1.5
+    private func rule(_ items: [(RuleCondition, Bool)], match: CustomRule.Match = .all) -> CustomRule {
+        CustomRule(match: match, items: items.map { CustomRule.Item(condition: $0.0, isOn: $0.1) })
+    }
 
-    func testSessionLastsWhileRuleHoldsAndEndsWhenItStops() {
-        let manager = makeManager(grace: 0)
-        defer { manager.end() }
+    private var isRuleSession: Bool {
+        if case .rule = manager.session?.trigger { return true }
+        return false
+    }
+
+    // MARK: - Off until switched on
+
+    func testNothingHappensUntilAConditionIsOn() {
         state.volumes = [drive]
-        manager.start(.rule(CustomRule(conditions: [.externalDrive(nil)])))
-        XCTAssertEqual(wakefulAssertionTypes(), [PowerAssertion.preventDisplaySleep])
-        XCTAssertFalse(waitUntil(timeout: pollWait) { !manager.isActive }, "ended while the drive was connected")
-        XCTAssertGreaterThanOrEqual(requested.count, 1)
+        settings.customRule = rule([(.externalDrive(nil), false), (.charger, false)])
+        startAutomation()
+        XCTAssertFalse(waitUntil(timeout: settle) { manager.isActive }, "started with every condition off")
+        XCTAssertTrue(requested.isEmpty, "checked the system with nothing switched on")
+    }
 
+    func testTurningAConditionOnStartsSessionWhenTrue() {
+        state.volumes = [drive]
+        settings.customRule = rule([(.externalDrive(nil), false)])
+        startAutomation()
+        settings.customRule = rule([(.externalDrive(nil), true)])
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession }, "didn't start")
+        XCTAssertEqual(manager.session?.triggerDescription, "While an external drive is connected")
+        XCTAssertEqual(wakefulAssertionTypes(), [PowerAssertion.preventDisplaySleep])
+    }
+
+    func testOffConditionsAreIgnored() {
+        state.onACPower = false
+        state.volumes = [drive]
+        // The charger is off, so only the drive counts, even with "all".
+        settings.customRule = rule([(.externalDrive(nil), true), (.charger, false)])
+        startAutomation()
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession })
+        XCTAssertEqual(manager.session?.triggerDescription, "While an external drive is connected")
+    }
+
+    func testTurningEverythingOffEndsTheSession() {
+        state.volumes = [drive]
+        settings.customRule = rule([(.externalDrive(nil), true)])
+        startAutomation(grace: 60)
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession })
+        settings.customRule = rule([(.externalDrive(nil), false)])
+        XCTAssertTrue(waitUntil(timeout: settle) { !manager.isActive }, "kept running after being switched off")
+    }
+
+    // MARK: - Starting and stopping on its own
+
+    func testEndsWhenRuleStopsBeingTrueAndRestartsWhenTrueAgain() {
+        state.volumes = [drive]
+        settings.customRule = rule([(.externalDrive(nil), true)])
+        startAutomation()
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession })
         state.volumes = []   // drive unplugged
-        XCTAssertTrue(waitUntil(timeout: pollWait) { !manager.isActive }, "outlived the drive")
-        XCTAssertEqual(wakefulAssertionTypes(), [])
+        XCTAssertTrue(waitUntil(timeout: settle) { !manager.isActive }, "outlived the drive")
+        state.volumes = [drive]   // plugged back in
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession }, "didn't start again")
     }
 
     func testBriefDropWithinGracePeriodDoesNotEndSession() {
-        let manager = makeManager(grace: 6)
-        defer { manager.end() }
         state.volumes = [drive]
-        manager.start(.rule(CustomRule(conditions: [.externalDrive(nil)])))
+        settings.customRule = rule([(.externalDrive(nil), true)])
+        startAutomation(grace: 2)
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession })
         state.volumes = []
-        waitUntil(timeout: 3) { false }          // one unmet poll
+        waitUntil(timeout: 1) { false }
         XCTAssertTrue(manager.isActive)
-        state.volumes = [drive]                   // back before the grace period ends
-        XCTAssertFalse(waitUntil(timeout: 7) { !manager.isActive }, "ended despite the drive coming back")
+        state.volumes = [drive]
+        XCTAssertFalse(waitUntil(timeout: 3) { !manager.isActive }, "ended despite the drive coming back")
     }
 
     func testEndsAfterGracePeriod() {
-        let manager = makeManager(grace: 3)
-        defer { manager.end() }
-        manager.start(.rule(CustomRule(conditions: [.charger])))   // unmet from the start
-        let started = Date()
-        XCTAssertTrue(waitUntil(timeout: 10) { !manager.isActive })
-        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(started), 3, "ended before the grace period")
+        state.onACPower = true
+        settings.customRule = rule([(.charger, true)])
+        startAutomation(grace: 1.5)
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession })
+        state.onACPower = false
+        let unplugged = Date()
+        XCTAssertTrue(waitUntil(timeout: 5) { !manager.isActive })
+        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(unplugged), 1.5, "ended before the grace period")
     }
 
-    func testAnyRuleKeepsGoingWhileOneConditionHolds() {
-        let manager = makeManager(grace: 0)
-        defer { manager.end() }
+    func testAllAndAny() {
         state.onACPower = true
-        manager.start(.rule(CustomRule(match: .any, conditions: [.charger, .externalDisplay])))
-        state.onACPower = false
-        state.externalDisplayConnected = true
-        XCTAssertFalse(waitUntil(timeout: pollWait) { !manager.isActive })
-        state.externalDisplayConnected = false
-        XCTAssertTrue(waitUntil(timeout: pollWait) { !manager.isActive })
+        settings.customRule = rule([(.charger, true), (.externalDisplay, true)], match: .all)
+        startAutomation()
+        XCTAssertFalse(waitUntil(timeout: settle) { manager.isActive }, "all: only one is true")
+        settings.customRule = rule([(.charger, true), (.externalDisplay, true)], match: .any)
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession }, "any: one is enough")
+        XCTAssertEqual(manager.session?.triggerDescription,
+                       "While the charger is connected or an external display is connected")
     }
+
+    func testEditingTheRuleUpdatesTheRunningSession() {
+        state.volumes = [drive]
+        state.onACPower = true
+        settings.customRule = rule([(.externalDrive(nil), true), (.charger, false)])
+        startAutomation()
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession })
+        settings.customRule = rule([(.externalDrive(nil), true), (.charger, true)])
+        XCTAssertTrue(waitUntil(timeout: settle) {
+            manager.session?.triggerDescription == "While an external drive is connected and the charger is connected"
+        })
+        XCTAssertTrue(isRuleSession)
+    }
+
+    // MARK: - Working alongside the user
+
+    func testNeverReplacesASessionStartedByHand() {
+        manager.start(.manual(until: nil))
+        state.volumes = [drive]
+        settings.customRule = rule([(.externalDrive(nil), true)])
+        startAutomation()
+        waitUntil(timeout: settle) { false }
+        XCTAssertFalse(isRuleSession, "replaced the manual session")
+        // When the manual session ends and the rule is still true, the rule takes over.
+        manager.end()
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession })
+    }
+
+    func testDoesNotEndASessionStartedByHand() {
+        state.volumes = []
+        settings.customRule = rule([(.externalDrive(nil), true)])
+        startAutomation()
+        manager.start(.manual(until: nil))
+        XCTAssertFalse(waitUntil(timeout: settle) { !manager.isActive }, "ended the manual session")
+    }
+
+    func testEndingItYourselfKeepsItOffUntilTheRuleResets() {
+        state.volumes = [drive]
+        settings.customRule = rule([(.externalDrive(nil), true)])
+        startAutomation()
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession })
+
+        manager.end()   // the user turns it off
+        XCTAssertFalse(waitUntil(timeout: settle) { manager.isActive }, "restarted right after being turned off")
+        XCTAssertTrue(automation!.isSuppressed)
+
+        state.volumes = []   // rule stops being true…
+        XCTAssertTrue(waitUntil(timeout: settle) { automation?.isSuppressed == false })
+        state.volumes = [drive]   // …and becomes true again
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession }, "didn't come back once the rule reset")
+    }
+
+    // MARK: - Details
 
     func testOnlyNeededStateIsGathered() {
-        let manager = makeManager(grace: 0)
-        defer { manager.end() }
         state.onACPower = true
-        manager.start(.rule(CustomRule(conditions: [.charger])))
-        XCTAssertTrue(waitUntil(timeout: pollWait) { !requested.isEmpty })
-        XCTAssertEqual(requested.first, [.charger])
+        settings.customRule = rule([(.charger, true), (.externalDrive(nil), false)])
+        startAutomation()
+        XCTAssertTrue(waitUntil(timeout: settle) { !requested.isEmpty })
+        XCTAssertEqual(requested.first, [.charger], "looked at switched-off conditions")
     }
 
-    func testAppConditionUsesRunningApps() throws {
-        let finder = try XCTUnwrap(NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first)
-        let manager = makeManager(grace: 0)
-        defer { manager.end() }
-        manager.start(.rule(CustomRule(conditions: [.appRunning(AppChoice(bundleID: "com.apple.finder", name: "Finder"))])))
-        XCTAssertFalse(waitUntil(timeout: pollWait) { !manager.isActive }, "Finder is running")
-        _ = finder
-        manager.start(.rule(CustomRule(conditions: [.appRunning(AppChoice(bundleID: "invalid.not.running", name: "Nope"))])))
-        XCTAssertTrue(waitUntil(timeout: pollWait) { !manager.isActive })
+    func testAppConditionUsesRunningApps() {
+        settings.customRule = rule([(.appRunning(AppChoice(bundleID: "com.apple.finder", name: "Finder")), true)])
+        startAutomation()
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession }, "Finder is running")
+        XCTAssertEqual(manager.session?.triggerDescription, "While “Finder” is running")
+        settings.customRule = rule([(.appRunning(AppChoice(bundleID: "invalid.not.running", name: "Nope")), true)])
+        XCTAssertTrue(waitUntil(timeout: settle) { !manager.isActive })
     }
 
-    func testReplacingRuleSessionIgnoresOldRule() {
-        let manager = makeManager(grace: 0)
-        defer { manager.end() }
-        manager.start(.rule(CustomRule(conditions: [.charger])))   // would end at the first poll
-        manager.start(.manual(until: nil))
-        XCTAssertFalse(waitUntil(timeout: pollWait) { !manager.isActive }, "old rule ended the new session")
-    }
-
-    func testStressManyRuleSessions() {
-        let manager = makeManager(grace: 0)
-        defer { manager.end() }
+    func testStressSwitchingOnAndOff() {
         state.volumes = [drive]
-        for i in 0..<500 {
-            manager.start(.rule(CustomRule(match: i.isMultiple(of: 2) ? .all : .any, conditions: [.externalDrive(nil)])))
-            if i.isMultiple(of: 3) { manager.end() }
+        startAutomation()
+        for i in 0..<300 {
+            settings.customRule = rule([(.externalDrive(nil), i.isMultiple(of: 2)), (.charger, false)])
+            if i.isMultiple(of: 7) { waitUntil(timeout: 0.02) { false } }
         }
-        XCTAssertLessThanOrEqual(wakefulAssertionTypes().count, 1)
-        manager.end()
+        // Ends switched off (299 is odd).
+        XCTAssertTrue(waitUntil(timeout: settle) { !manager.isActive })
         XCTAssertEqual(wakefulAssertionTypes(), [])
+        settings.customRule = rule([(.externalDrive(nil), true)])
+        XCTAssertTrue(waitUntil(timeout: settle) { isRuleSession })
+        XCTAssertEqual(wakefulAssertionTypes().count, 1)
     }
 }
 
-/// Rule sessions against the real system.
-final class LiveRuleSessionTests: XCTestCase {
+/// The custom rule running against the real system.
+final class LiveRuleAutomationTests: XCTestCase {
     private var attached: String?
+    private var settings: Wakeful.Settings!
+    private var cleanupSettings: (() -> Void)!
+    private var manager: SessionManager!
+    private var automation: RuleAutomation!
+
+    override func setUp() {
+        (settings, cleanupSettings) = makeTestSettings()
+        manager = SessionManager(settings: settings, closedDisplayGuard: ClosedDisplayGuard(directory: makeTempDirectory()))
+        automation = RuleAutomation(manager: manager, settings: settings, pollInterval: 0.3, gracePeriod: 0)
+    }
 
     override func tearDown() {
+        automation.stop()
+        manager.end()
+        cleanupSettings()
         if let attached { shell("/usr/bin/hdiutil detach -force -quiet \"$1\"", [attached]) }
     }
 
-    func testNetworkDriveRuleStaysActiveWhileShareIsMounted() throws {
+    func testMountedNetworkShareTurnsRuleOn() throws {
         try XCTSkipIf(!Volumes.mounted().contains { $0.kind == .network }, "no network share mounted on this Mac")
-        let (settings, cleanup) = makeTestSettings()
-        defer { cleanup() }
-        let manager = SessionManager(settings: settings, closedDisplayGuard: ClosedDisplayGuard(directory: makeTempDirectory()),
-                                     ruleGracePeriod: 0)
-        defer { manager.end() }
-        manager.start(.rule(CustomRule(conditions: [.networkDrive(nil)])))
-        XCTAssertFalse(waitUntil(timeout: 5) { !manager.isActive }, "ended while the share was mounted")
+        settings.customRule = CustomRule(conditions: [.networkDrive(nil)])
+        automation.start()
+        XCTAssertTrue(waitUntil(timeout: 3) { manager.isActive }, "didn't start with a share mounted")
+        XCTAssertFalse(waitUntil(timeout: 3) { !manager.isActive }, "ended while the share was mounted")
     }
 
-    /// A mounted disk image must not keep an "external drive" session alive.
-    func testDiskImageDoesNotSatisfyExternalDriveRule() throws {
+    /// A mounted disk image must not turn on an "external drive" rule.
+    func testDiskImageDoesNotTurnOnExternalDriveRule() throws {
         try XCTSkipIf(Volumes.mounted().contains { $0.kind == .external }, "a real external drive is connected")
         let name = "WakefulRule\(Int.random(in: 1000...9999))"
         let image = makeTempDirectory().appendingPathComponent("\(name).dmg").path
@@ -158,13 +270,9 @@ final class LiveRuleSessionTests: XCTestCase {
         XCTAssertEqual(shell("/usr/bin/hdiutil attach -quiet \"$1\"", [image]).status, 0)
         attached = "/Volumes/\(name)"
 
-        let (settings, cleanup) = makeTestSettings()
-        defer { cleanup() }
-        let manager = SessionManager(settings: settings, closedDisplayGuard: ClosedDisplayGuard(directory: makeTempDirectory()),
-                                     ruleGracePeriod: 0)
-        defer { manager.end() }
-        manager.start(.rule(CustomRule(conditions: [.externalDrive(nil)])))
-        XCTAssertTrue(waitUntil(timeout: 5) { !manager.isActive }, "the disk image counted as an external drive")
+        settings.customRule = CustomRule(conditions: [.externalDrive(nil)])
+        automation.start()
+        XCTAssertFalse(waitUntil(timeout: 3) { manager.isActive }, "the disk image counted as an external drive")
     }
 }
 

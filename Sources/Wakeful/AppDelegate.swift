@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     #endif
     private var signalSources: [DispatchSourceSignal] = []
     private var statusPanel: StatusPanelController?
+    private lazy var ruleAutomation = RuleAutomation(manager: manager, settings: settings)
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         // Hides the Dock icon when running outside the app bundle (e.g. `swift run`).
@@ -25,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settings.startSessionAtLaunch {
             manager.start(.manual(until: nil))
         }
+        ruleAutomation.start()
         #if !OFFLINE
         updater.setAutomaticChecks(settings.checkForUpdatesAutomatically)
         #endif

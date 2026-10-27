@@ -65,6 +65,39 @@ final class CustomRuleTests: XCTestCase {
         XCTAssertFalse(rule.isMet(in: SystemSnapshot(volumes: [dmg], onACPower: false)))
     }
 
+    func testSwitchedOffConditionsDontCount() {
+        let snapshot = SystemSnapshot(volumes: [t7], onACPower: false)
+        var rule = CustomRule(match: .all, items: [
+            CustomRule.Item(condition: .externalDrive(nil), isOn: true),
+            CustomRule.Item(condition: .charger, isOn: false),
+        ])
+        XCTAssertTrue(rule.isArmed)
+        XCTAssertTrue(rule.isMet(in: snapshot), "the unmet charger condition is off")
+        XCTAssertEqual(rule.conditions, [.externalDrive(nil)])
+        XCTAssertEqual(rule.summary, "an external drive is connected")
+        XCTAssertEqual(rule.watchedKinds, [.externalDrive])
+        XCTAssertEqual(rule.armedRule, CustomRule(match: .all, conditions: [.externalDrive(nil)]))
+
+        rule.items[0].isOn = false
+        XCTAssertFalse(rule.isArmed)
+        XCTAssertFalse(rule.isMet(in: snapshot), "nothing switched on")
+        XCTAssertEqual(rule.watchedKinds, [])
+    }
+
+    func testNewConditionsStartOff() {
+        XCTAssertFalse(CustomRule.Item(condition: .charger).isOn)
+    }
+
+    /// 1.2.0 saved a plain condition list; it loads with everything switched off.
+    func testRulesSavedBy120LoadSwitchedOff() {
+        let saved = Data(#"{"match":"any","conditions":[{"charger":{}},{"externalDrive":{"_0":{"id":"UUID-T7","name":"T7"}}}]}"#.utf8)
+        let rule = CustomRule.decode(saved)
+        XCTAssertEqual(rule.match, .any)
+        XCTAssertEqual(rule.items.map(\.condition), [.charger, .externalDrive(DriveChoice(id: "UUID-T7", name: "T7"))])
+        XCTAssertEqual(rule.items.map(\.isOn), [false, false])
+        XCTAssertFalse(rule.isArmed)
+    }
+
     func testEmptyRuleIsNeverMet() {
         let everything = SystemSnapshot(volumes: [t7, nas], onACPower: true, externalDisplayConnected: true,
                                         audioPlaying: true, runningBundleIDs: ["a"])
@@ -152,7 +185,7 @@ final class CustomRuleTests: XCTestCase {
         // Huge stored rules are cut down to the maximum.
         let many = CustomRule(match: .all, conditions: Array(repeating: .charger, count: 500))
         let decoded = CustomRule.decode(try JSONEncoder().encode(many))
-        XCTAssertEqual(decoded.conditions.count, CustomRule.maxConditions)
+        XCTAssertEqual(decoded.items.count, CustomRule.maxConditions)
     }
 }
 

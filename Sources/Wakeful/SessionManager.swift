@@ -9,7 +9,7 @@ enum SessionTrigger {
     case app(NSRunningApplication)
     /// Ends when the download finishes or stalls.
     case download(DownloadWatcher)
-    /// Ends once the rule has stopped being met for a few seconds.
+    /// Started and ended automatically by `RuleAutomation` while the custom rule is met.
     case rule(CustomRule)
 }
 
@@ -68,30 +68,16 @@ final class SessionManager: ObservableObject {
     private let downloadPollQueue = DispatchQueue(label: "io.github.wakeful.download-poll")
     private var isPollingDownload = false
     private var startedScreenSaverForCurrentIdle = false
-    /// Rule checks list mounted volumes and query audio devices, so they also run off the main thread.
-    private let rulePollQueue = DispatchQueue(label: "io.github.wakeful.rule-poll")
-    private var isPollingRule = false
-    private var ruleUnmetSince: Date?
-    private let snapshotProvider: (Set<RuleCondition.Kind>, Set<String>) -> SystemSnapshot
-    /// How long a rule may be unmet before its session ends, so a drive or share that drops for a
-    /// moment (a NAS reconnecting) doesn't end it.
-    let ruleGracePeriod: TimeInterval
-    static let rulePollInterval = 2
 
-    init(settings: Settings, closedDisplayGuard: ClosedDisplayGuard = ClosedDisplayGuard(),
-         ruleGracePeriod: TimeInterval = 5,
-         snapshotProvider: @escaping (Set<RuleCondition.Kind>, Set<String>) -> SystemSnapshot = SystemSnapshot.capture) {
+    init(settings: Settings, closedDisplayGuard: ClosedDisplayGuard = ClosedDisplayGuard()) {
         self.settings = settings
         self.closedDisplayGuard = closedDisplayGuard
-        self.ruleGracePeriod = ruleGracePeriod
-        self.snapshotProvider = snapshotProvider
     }
 
     var isActive: Bool { session != nil }
 
     func start(_ trigger: SessionTrigger) {
         stopWatchingTriggers()
-        ruleUnmetSince = nil
         session = Session(trigger: trigger)
 
         if case .app(let app) = trigger {
@@ -223,10 +209,6 @@ final class SessionManager: ObservableObject {
             pollDownload(watcher, for: session)
         }
 
-        if case .rule(let rule) = session.trigger, tickCount % Self.rulePollInterval == 0 {
-            pollRule(rule, for: session)
-        }
-
         if settings.lowBatteryThreshold > 0, tickCount % 15 == 0,
            let battery = Battery.status(), battery.onBattery, battery.percent <= settings.lowBatteryThreshold {
             end(reason: "Battery dropped to \(battery.percent)%.")
@@ -256,36 +238,6 @@ final class SessionManager: ObservableObject {
                 }
             }
         }
-    }
-
-    private func pollRule(_ rule: CustomRule, for polledSession: Session) {
-        guard !isPollingRule else { return }
-        isPollingRule = true
-        let kinds = rule.watchedKinds
-        let apps = kinds.contains(.appRunning) ? SystemSnapshot.runningBundleIDs() : []
-        let provider = snapshotProvider
-        rulePollQueue.async { [weak self] in
-            let snapshot = provider(kinds, apps)
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                isPollingRule = false
-                guard session === polledSession else { return }
-                ruleChecked(rule, snapshot)
-            }
-        }
-    }
-
-    private func ruleChecked(_ rule: CustomRule, _ snapshot: SystemSnapshot) {
-        if rule.isMet(in: snapshot) {
-            ruleUnmetSince = nil
-            return
-        }
-        let now = Date()
-        let since = ruleUnmetSince ?? now
-        ruleUnmetSince = since
-        guard now.timeIntervalSince(since) >= ruleGracePeriod else { return }
-        let unmet = rule.conditions.first { !$0.isMet(in: snapshot) }
-        end(reason: unmet.map { "No longer true: \($0.phrase)." } ?? "The rule is no longer met.")
     }
 
     /// The display assertion also suppresses the screen saver, so when the user allows it we

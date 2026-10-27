@@ -93,19 +93,53 @@ enum RuleCondition: Codable, Hashable {
     }
 }
 
-/// "Keep the Mac awake while all (or any) of these are true."
-struct CustomRule: Codable, Equatable {
+/// "Keep the Mac awake while all (or any) of the turned-on conditions are true."
+///
+/// Each condition has its own on/off switch and starts off. While at least one is on, Wakeful
+/// watches the rule and runs a session whenever it's met (see `RuleAutomation`).
+struct CustomRule: Equatable {
     enum Match: String, Codable, CaseIterable {
         case all, any
+    }
+
+    struct Item: Codable, Hashable {
+        var condition: RuleCondition
+        var isOn = false
     }
 
     static let maxConditions = 8
 
     var match: Match = .all
-    var conditions: [RuleCondition] = []
+    var items: [Item] = []
 
-    /// An empty rule is never met.
+    init(match: Match = .all, items: [Item] = []) {
+        self.match = match
+        self.items = items
+    }
+
+    /// A rule whose conditions are all turned on, as used for a running session.
+    init(match: Match = .all, conditions: [RuleCondition]) {
+        self.init(match: match, items: conditions.map { Item(condition: $0, isOn: true) })
+    }
+
+    /// The conditions that are switched on. Only these count.
+    var conditions: [RuleCondition] {
+        items.filter(\.isOn).map(\.condition)
+    }
+
+    /// True when at least one condition is switched on.
+    var isArmed: Bool {
+        items.contains(where: \.isOn)
+    }
+
+    /// Just the switched-on conditions, for the session that runs while they hold.
+    var armedRule: CustomRule {
+        CustomRule(match: match, conditions: conditions)
+    }
+
+    /// A rule with nothing switched on is never met.
     func isMet(in snapshot: SystemSnapshot) -> Bool {
+        let conditions = conditions
         guard !conditions.isEmpty else { return false }
         switch match {
         case .all: return conditions.allSatisfy { $0.isMet(in: snapshot) }
@@ -121,7 +155,7 @@ struct CustomRule: Codable, Equatable {
         return phrases.dropLast().joined(separator: ", ") + " \(joiner) " + phrases.last!
     }
 
-    /// Which parts of the system the rule looks at, so a snapshot only gathers those.
+    /// Which parts of the system the switched-on conditions look at, so a snapshot only gathers those.
     var watchedKinds: Set<RuleCondition.Kind> {
         Set(conditions.map(\.kind))
     }
@@ -129,7 +163,32 @@ struct CustomRule: Codable, Equatable {
     /// Decodes a stored rule, dropping anything unreadable instead of failing.
     static func decode(_ data: Data?) -> CustomRule {
         guard let data, let rule = try? JSONDecoder().decode(CustomRule.self, from: data) else { return CustomRule() }
-        return CustomRule(match: rule.match, conditions: Array(rule.conditions.prefix(maxConditions)))
+        return CustomRule(match: rule.match, items: Array(rule.items.prefix(maxConditions)))
+    }
+}
+
+extension CustomRule: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case match, items
+        /// Version 1.2.0 stored a plain list with no on/off switches.
+        case conditions
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        match = try container.decode(Match.self, forKey: .match)
+        if let items = try container.decodeIfPresent([Item].self, forKey: .items) {
+            self.items = items
+        } else {
+            // Rules saved by 1.2.0 come back with every condition switched off.
+            items = try container.decode([RuleCondition].self, forKey: .conditions).map { Item(condition: $0) }
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(match, forKey: .match)
+        try container.encode(items, forKey: .items)
     }
 }
 

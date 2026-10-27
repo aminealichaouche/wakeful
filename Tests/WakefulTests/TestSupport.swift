@@ -80,10 +80,17 @@ func makeMenuView(manager: SessionManager, settings: Settings, navigation: MenuN
     #endif
 }
 
+/// A panel controller whose icon is pinned near the top middle of the main screen. The test's own
+/// menu bar icon can be pushed behind the notch on a full menu bar, which would leave the panel
+/// nowhere to open.
 func makeStatusPanelController(manager: SessionManager, settings: Settings) -> StatusPanelController {
     #if OFFLINE
-    StatusPanelController(manager: manager, settings: settings)
+    let controller = StatusPanelController(manager: manager, settings: settings)
     #else
-    StatusPanelController(manager: manager, settings: settings, updater: UpdateChecker())
+    let controller = StatusPanelController(manager: manager, settings: settings, updater: UpdateChecker())
     #endif
+    if let visible = NSScreen.main?.visibleFrame {
+        controller.iconFrameOverride = NSRect(x: visible.midX, y: visible.maxY, width: 24, height: 24)
+    }
+    return controller
 }
