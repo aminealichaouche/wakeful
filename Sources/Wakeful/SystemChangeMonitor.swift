@@ -11,6 +11,7 @@ final class SystemChangeMonitor {
     private var powerSource: CFRunLoopSource?
     private var audioListener: AudioObjectPropertyListenerBlock?
     private var audioDevices: [AudioDeviceID] = []
+    private var audioProcesses: [AudioObjectID] = []
     private(set) var isRunning = false
 
     init(onChange: @escaping () -> Void) {
@@ -88,18 +89,43 @@ final class SystemChangeMonitor {
     private static var runningAddress = AudioObjectPropertyAddress(
         mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere, mScope: kAudioObjectPropertyScopeGlobal,
         mElement: kAudioObjectPropertyElementMain)
+    private static var processesAddress = AudioObjectPropertyAddress(
+        mSelector: kAudioHardwarePropertyProcessObjectList, mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain)
+    private static var processOutputAddress = AudioObjectPropertyAddress(
+        mSelector: kAudioProcessPropertyIsRunningOutput, mScope: kAudioObjectPropertyScopeGlobal,
+        mElement: kAudioObjectPropertyElementMain)
 
-    /// Listens for each output device starting or stopping, and for devices coming and going
-    /// (headphones, AirPlay), re-listening to the new set when they do.
+    /// Listens for each output device and each app starting or stopping audio, and for devices
+    /// (headphones, AirPlay) and apps coming and going, re-listening to the new set when they do.
     private func observeAudio() {
         let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             guard let self, isRunning else { return }
             listenToDevices()
+            listenToProcesses()
             changed()
         }
         audioListener = listener
-        AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &Self.devicesAddress, .main, listener)
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        AudioObjectAddPropertyListenerBlock(system, &Self.devicesAddress, .main, listener)
+        if #available(macOS 14.2, *) {
+            AudioObjectAddPropertyListenerBlock(system, &Self.processesAddress, .main, listener)
+        }
         listenToDevices()
+        listenToProcesses()
+    }
+
+    private func listenToProcesses() {
+        guard let audioListener else { return }
+        let processes = AudioOutput.processes()
+        guard processes != audioProcesses else { return }
+        for process in audioProcesses {
+            AudioObjectRemovePropertyListenerBlock(process, &Self.processOutputAddress, .main, audioListener)
+        }
+        for process in processes {
+            AudioObjectAddPropertyListenerBlock(process, &Self.processOutputAddress, .main, audioListener)
+        }
+        audioProcesses = processes
     }
 
     private func listenToDevices() {
@@ -120,8 +146,16 @@ final class SystemChangeMonitor {
         for device in audioDevices {
             AudioObjectRemovePropertyListenerBlock(device, &Self.runningAddress, .main, audioListener)
         }
-        AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject), &Self.devicesAddress, .main, audioListener)
+        for process in audioProcesses {
+            AudioObjectRemovePropertyListenerBlock(process, &Self.processOutputAddress, .main, audioListener)
+        }
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        AudioObjectRemovePropertyListenerBlock(system, &Self.devicesAddress, .main, audioListener)
+        if #available(macOS 14.2, *) {
+            AudioObjectRemovePropertyListenerBlock(system, &Self.processesAddress, .main, audioListener)
+        }
         audioDevices = []
+        audioProcesses = []
         self.audioListener = nil
     }
 }

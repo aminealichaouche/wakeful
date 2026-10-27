@@ -135,6 +135,46 @@ final class RuleReactionTests: XCTestCase {
         XCTAssertFalse(waitUntil(timeout: 5) { !manager.isActive }, "ended although the share came back")
     }
 
+    /// Switching on a condition that's false ends the session at once: the grace period is for
+    /// things dropping out on their own, not for edits.
+    func testEditingTheRuleSkipsTheGracePeriod() {
+        state.volumes = [share]
+        let shareItem = CustomRule.Item(condition: .networkDrive(nil), isOn: true)
+        start(CustomRule(match: .all, items: [shareItem, CustomRule.Item(condition: .audioPlaying, isOn: false)]))
+        XCTAssertTrue(waitUntil(timeout: 1) { manager.isActive })
+
+        let edited = Date()
+        settings.customRule = CustomRule(match: .all, items: [shareItem, CustomRule.Item(condition: .audioPlaying, isOn: true)])
+        XCTAssertTrue(waitUntil(timeout: 1) { !manager.isActive }, "waited out the grace period after an edit")
+        XCTAssertLessThan(Date().timeIntervalSince(edited), 0.5)
+
+        settings.customRule = CustomRule(match: .all, items: [shareItem, CustomRule.Item(condition: .audioPlaying, isOn: false)])
+        XCTAssertTrue(waitUntil(timeout: 0.5) { manager.isActive }, "switching it back off didn't restart at once")
+
+        // A share dropping out on its own still gets its grace period.
+        state.volumes = []
+        post(NSWorkspace.didUnmountNotification)
+        XCTAssertFalse(waitUntil(timeout: 2) { !manager.isActive }, "no grace period for a real drop")
+    }
+
+    func testStressRapidToggling() {
+        state.volumes = [share]
+        let shareItem = CustomRule.Item(condition: .networkDrive(nil), isOn: true)
+        start(CustomRule(match: .all, items: [shareItem]))
+        XCTAssertTrue(waitUntil(timeout: 1) { manager.isActive })
+        var slowest: TimeInterval = 0
+        for i in 0..<100 {
+            let audioOn = i.isMultiple(of: 2)
+            let started = Date()
+            settings.customRule = CustomRule(match: .all, items: [shareItem, CustomRule.Item(condition: .audioPlaying, isOn: audioOn)])
+            XCTAssertTrue(waitUntil(timeout: 1) { manager.isActive == !audioOn }, "toggle \(i)")
+            slowest = max(slowest, Date().timeIntervalSince(started))
+        }
+        print("Slowest of 100 toggles: \(Int(slowest * 1000))ms")
+        XCTAssertLessThan(slowest, 0.5)
+        XCTAssertLessThanOrEqual(wakefulAssertionTypes().count, 1)
+    }
+
     func testGracePeriodsByCondition() {
         XCTAssertEqual(RuleCondition.Kind.networkDrive.gracePeriod, 5)
         XCTAssertEqual(RuleCondition.Kind.audioPlaying.gracePeriod, 5)

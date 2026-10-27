@@ -73,9 +73,22 @@ final class Settings: ObservableObject {
 
     /// The rule last set up under "While Custom Rule…", kept for next time.
     var customRule: CustomRule {
-        get { CustomRule.decode(defaults.data(forKey: Key.customRule)) }
-        set { objectWillChange.send(); defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.customRule) }
+        get {
+            // The rule page reads this many times per redraw, so only decode when the stored data changes.
+            let data = defaults.data(forKey: Key.customRule)
+            if let cached = cachedRule, cached.data == data { return cached.rule }
+            let rule = CustomRule.decode(data)
+            cachedRule = (data, rule)
+            return rule
+        }
+        set {
+            objectWillChange.send()
+            let data = try? JSONEncoder().encode(newValue)
+            defaults.set(data, forKey: Key.customRule)
+            cachedRule = (data, newValue)
+        }
     }
+    private var cachedRule: (data: Data?, rule: CustomRule)?
 
     #if !OFFLINE
     /// Off by default: Wakeful makes no network requests unless asked to.

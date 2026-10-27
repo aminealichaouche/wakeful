@@ -68,7 +68,7 @@ the conditions you turn on are true:
 | Network Drive Is Attached | Any network share (SMB, AFP, NFS, WebDAV), or a specific one |
 | Charger Is Connected | |
 | External Display Is Connected | |
-| Audio Is Playing | Any app playing through any output |
+| Audio Is Playing | Any app playing audio to any output, including with a laptop's lid closed |
 | App Is Running | A specific app |
 
 - External drives are physical drives that aren't built in, plus removable media
@@ -85,6 +85,8 @@ the conditions you turn on are true:
   so a NAS reconnecting or a pause between songs doesn't end it. Unplugging a
   drive or the charger, disconnecting a display or quitting an app ends it right
   away.
+- Switching conditions on or off, or changing all/any, takes effect immediately
+  (about a millisecond). The grace period never applies to your own edits.
 - It never replaces or ends a session you started yourself. If you end a rule
   session yourself, it stays off until the rule next becomes false, so it
   doesn't start again straight away.

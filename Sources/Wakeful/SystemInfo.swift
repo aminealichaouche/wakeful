@@ -48,9 +48,33 @@ enum Displays {
 }
 
 enum AudioOutput {
-    /// True while any app is playing through any output device (speakers, headphones, AirPlay…).
+    /// True while any app is playing audio, to any output (speakers, headphones, a display,
+    /// AirPlay…). Asks both which apps are producing audio and which devices are running: with a
+    /// laptop's lid closed its speakers are switched off, so a device check alone misses audio
+    /// played to them, while the app check still sees it.
     static var isPlaying: Bool {
-        devices().contains { hasOutputStreams($0) && isRunningSomewhere($0) }
+        processes().contains(where: isProducingOutput)
+            || devices().contains { hasOutputStreams($0) && isRunningSomewhere($0) }
+    }
+
+    /// Apps known to the audio system (macOS 14.2 and later; empty on older versions).
+    static func processes() -> [AudioObjectID] {
+        guard #available(macOS 14.2, *) else { return [] }
+        var address = address(kAudioHardwarePropertyProcessObjectList)
+        var size: UInt32 = 0
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr, size > 0 else { return [] }
+        var processes = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &processes) == noErr else { return [] }
+        return processes
+    }
+
+    static func isProducingOutput(_ process: AudioObjectID) -> Bool {
+        guard #available(macOS 14.2, *) else { return false }
+        var address = address(kAudioProcessPropertyIsRunningOutput)
+        var running: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        return AudioObjectGetPropertyData(process, &address, 0, nil, &size, &running) == noErr && running != 0
     }
 
     private static func address(_ selector: AudioObjectPropertySelector,

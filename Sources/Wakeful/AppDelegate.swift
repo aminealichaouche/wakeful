@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             manager.start(.manual(until: nil))
         }
         ruleAutomation.start()
+        warmUpSensors()
         #if !OFFLINE
         updater.setAutomaticChecks(settings.checkForUpdatesAutomatically)
         #endif
@@ -35,6 +36,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         // Releases power assertions and reverts closed-display mode.
         manager.end()
+    }
+
+    /// The first audio and display queries take a moment (about 160ms for audio) while macOS sets
+    /// them up. Doing that now, off the main thread, keeps the first rule toggle and the first
+    /// opening of the rule page instant.
+    private func warmUpSensors() {
+        DispatchQueue.global(qos: .utility).async {
+            _ = AudioOutput.isPlaying
+            _ = Displays.isExternalDisplayConnected
+            _ = Volumes.mounted()
+        }
     }
 
     /// `kill`, Ctrl-C and hang-ups would otherwise exit without running `applicationWillTerminate`.

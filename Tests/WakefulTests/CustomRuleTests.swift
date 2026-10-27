@@ -176,6 +176,24 @@ final class CustomRuleTests: XCTestCase {
         XCTAssertEqual(settings.customRule, rule)
     }
 
+    /// The decoded rule is cached; another Settings on the same defaults must still see changes.
+    func testCachedRuleNeverGoesStale() {
+        let suite = "wakeful-tests-\(UUID().uuidString)"
+        defer { UserDefaults().removePersistentDomain(forName: suite) }
+        let a = Settings(defaults: UserDefaults(suiteName: suite)!)
+        let b = Settings(defaults: UserDefaults(suiteName: suite)!)
+        XCTAssertEqual(a.customRule, CustomRule())
+        XCTAssertEqual(b.customRule, CustomRule())
+        let first = CustomRule(conditions: [.charger])
+        a.customRule = first
+        XCTAssertEqual(b.customRule, first)
+        let second = CustomRule(match: .any, conditions: [.audioPlaying, .externalDisplay])
+        b.customRule = second
+        XCTAssertEqual(a.customRule, second)
+        UserDefaults(suiteName: suite)!.removeObject(forKey: "customRule")
+        XCTAssertEqual(a.customRule, CustomRule(), "cleared behind its back")
+    }
+
     func testCorruptOrHostileStoredRulesAreIgnored() throws {
         XCTAssertEqual(CustomRule.decode(nil), CustomRule())
         XCTAssertEqual(CustomRule.decode(Data("not json".utf8)), CustomRule())

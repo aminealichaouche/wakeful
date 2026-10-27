@@ -162,7 +162,12 @@ final class RuleAutomation {
             return
         }
         let unmet = armed.conditions.filter { !$0.isMet(in: snapshot) }
-        let grace = gracePeriod ?? unmet.map(\.kind.gracePeriod).max() ?? 0
+        // The grace period is for things dropping out on their own. If the session's rule differs
+        // from the current one, the user just edited it (say, switched on a condition that's false),
+        // so act on that right away.
+        let wasEdited: Bool
+        if case .rule(let running)? = ruleSession?.trigger { wasEdited = running != armed } else { wasEdited = false }
+        let grace = wasEdited ? 0 : gracePeriod ?? unmet.map(\.kind.gracePeriod).max() ?? 0
         let now = Date()
         let since = unmetSince ?? now
         unmetSince = since
