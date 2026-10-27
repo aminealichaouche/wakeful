@@ -13,7 +13,9 @@ final class MenuNavigation: ObservableObject {
 struct MenuView: View {
     @ObservedObject var manager: SessionManager
     @ObservedObject var settings: Settings
+    #if !OFFLINE
     @ObservedObject var updater: UpdateChecker
+    #endif
     @ObservedObject var navigation: MenuNavigation
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -21,8 +23,8 @@ struct MenuView: View {
         case minutes, hours, custom, apps
     }
 
-    enum Page {
-        case main, settings
+    enum Page: Int {
+        case main, settings, rule
     }
 
     static let width: CGFloat = 300
@@ -41,12 +43,20 @@ struct MenuView: View {
         HStack(alignment: .top, spacing: 0) {
             pageContainer(.main) { mainPage }
             pageContainer(.settings) {
+                #if OFFLINE
+                SettingsPage(manager: manager, settings: settings,
+                             isVisible: page == .settings) { navigation.page = .main }
+                #else
                 SettingsPage(manager: manager, settings: settings, updater: updater,
                              isVisible: page == .settings) { navigation.page = .main }
+                #endif
+            }
+            pageContainer(.rule) {
+                RulePage(manager: manager, settings: settings, isVisible: page == .rule) { navigation.page = .main }
             }
         }
-        .frame(width: Self.width * 2, alignment: .topLeading)
-        .offset(x: page == .settings ? -Self.width : 0)
+        .frame(width: Self.width * 3, alignment: .topLeading)
+        .offset(x: -Self.width * CGFloat(page.rawValue))
         .frame(width: Self.width, alignment: .topLeading)
         .animation(reduceMotion ? nil : animation, value: page)
         .animation(animation, value: navigation.expanded)
@@ -127,6 +137,9 @@ struct MenuView: View {
                         manager.start(.download(DownloadWatcher(url: url)))
                     }
                 }
+                NavigationRow(icon: "slider.horizontal.3", title: "While Custom Rule…") {
+                    navigation.page = .rule
+                }
             }
 
             Divider().padding(.horizontal, 6)
@@ -134,12 +147,14 @@ struct MenuView: View {
             NavigationRow(icon: "gearshape", title: "Settings") { navigation.page = .settings }
 
             HStack(spacing: 8) {
+                #if !OFFLINE
                 UpdateButton(updater: updater)
+                #endif
                 Spacer()
                 CircleButton(icon: "info", help: "About Wakeful") {
                     NSApp.activate(ignoringOtherApps: true)
                     NSApp.orderFrontStandardAboutPanel(options: [
-                        .credits: NSAttributedString(string: "An open-source app that keeps your Mac awake."),
+                        .credits: NSAttributedString(string: Edition.aboutText),
                     ])
                 }
                 CircleButton(icon: "xmark", help: "Quit Wakeful") {
@@ -166,28 +181,23 @@ struct MenuView: View {
 private struct SettingsPage: View {
     @ObservedObject var manager: SessionManager
     @ObservedObject var settings: Settings
+    #if !OFFLINE
     let updater: UpdateChecker
+    #endif
     let isVisible: Bool
     let onBack: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Button(action: onBack) {
-                HStack(spacing: 8) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 22)
-                    Text("Settings").font(.system(size: 13, weight: .semibold))
-                    Spacer(minLength: 0)
-                }
-                .frame(height: 26)
-            }
-            .buttonStyle(RowButtonStyle())
-            .accessibilityLabel("Back")
+            PageHeader(title: "Settings", onBack: onBack)
 
+            #if OFFLINE
+            SettingsPanel(manager: manager, settings: settings, isVisible: isVisible)
+                .padding(.horizontal, 6)
+            #else
             SettingsPanel(manager: manager, settings: settings, updater: updater, isVisible: isVisible)
                 .padding(.horizontal, 6)
+            #endif
         }
     }
 }
@@ -220,7 +230,7 @@ private struct SessionCard: View {
                             }
                             if let trigger = session.triggerDescription {
                                 Text(trigger)
-                                    .lineLimit(1)
+                                    .lineLimit(2)
                                     .truncationMode(.middle)
                             }
                         } else {
@@ -258,6 +268,7 @@ private struct SessionCard: View {
 
 // MARK: - Footer
 
+#if !OFFLINE
 /// "Check for Updates" pill. Checking and the result play out inside the pill: the arrows spin,
 /// then the label rolls over to the result and, unless an update was found, back again.
 private struct UpdateButton: View {
@@ -342,6 +353,7 @@ private struct UpdateButton: View {
         }
     }
 }
+#endif
 
 // MARK: - Expandable sections
 
@@ -432,7 +444,9 @@ private struct RunningAppsList: View {
 private struct SettingsPanel: View {
     @ObservedObject var manager: SessionManager
     @ObservedObject var settings: Settings
+    #if !OFFLINE
     let updater: UpdateChecker
+    #endif
     /// The page stays rendered while hidden, so its state is refreshed each time it slides in.
     let isVisible: Bool
     @State private var launchAtLogin = false
@@ -458,6 +472,7 @@ private struct SettingsPanel: View {
                     if $0 { Notifier.requestAuthorization() }
                 }
             ))
+            #if !OFFLINE
             SwitchRow(title: "Check for Updates Automatically", isOn: Binding(
                 get: { settings.checkForUpdatesAutomatically },
                 set: {
@@ -466,6 +481,7 @@ private struct SettingsPanel: View {
                     if $0 { Notifier.requestAuthorization() }
                 }
             ))
+            #endif
 
             HStack {
                 Text("Screen Saver Delay")

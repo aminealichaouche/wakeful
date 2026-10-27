@@ -86,6 +86,28 @@ struct NavigationRow: View {
     }
 }
 
+/// Back button and title at the top of a page slid in from the right.
+struct PageHeader: View {
+    let title: String
+    let onBack: () -> Void
+
+    var body: some View {
+        Button(action: onBack) {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22)
+                Text(title).font(.system(size: 13, weight: .semibold))
+                Spacer(minLength: 0)
+            }
+            .frame(height: 26)
+        }
+        .buttonStyle(RowButtonStyle())
+        .accessibilityLabel("Back")
+    }
+}
+
 /// Row with a round icon that fills with the accent color when on (BetterDisplay style).
 /// An optional detail line explains the option underneath the title.
 struct ToggleRow: View {

@@ -1,8 +1,9 @@
 name: Release
 
 # Publishes a GitHub release whenever main has an app version (CFBundleShortVersionString in
-# Resources/Info.plist) that hasn't been released yet. Bump the version, push, and this tests,
-# builds and uploads the .dmg and .zip. GitHub attaches the source code archives itself.
+# Resources/Info.plist) that hasn't been released yet. Bump the version, push, and this tests and
+# builds both editions (standard, and offline with no update checks) and uploads their .dmg and
+# .zip. GitHub attaches the source code archives itself.
 on:
   push:
     branches: [main]
@@ -37,13 +38,17 @@ jobs:
 
       - name: Test
         if: steps.version.outputs.new == 'true'
-        run: swift test
+        run: |
+          swift test
+          swift test -Xswiftc -DOFFLINE --scratch-path .build/offline
 
-      - name: Build app and disk image
+      - name: Build apps and disk images
         if: steps.version.outputs.new == 'true'
         run: |
           ./scripts/build-app.sh
           ./scripts/make-dmg.sh
+          ./scripts/build-app.sh --offline
+          ./scripts/make-dmg.sh --offline
 
       - name: Publish release
         if: steps.version.outputs.new == 'true'
@@ -51,9 +56,10 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           cd build
-          shasum -a 256 "Wakeful-$VERSION.dmg" "Wakeful-$VERSION.zip" > SHA256SUMS.txt
+          FILES="Wakeful-$VERSION.dmg Wakeful-$VERSION.zip Wakeful-$VERSION-offline.dmg Wakeful-$VERSION-offline.zip"
+          shasum -a 256 $FILES > SHA256SUMS.txt
           gh release create "v$VERSION" \
-            "Wakeful-$VERSION.dmg" "Wakeful-$VERSION.zip" SHA256SUMS.txt \
+            $FILES SHA256SUMS.txt \
             --target "$GITHUB_SHA" \
             --title "Wakeful $VERSION" \
             --generate-notes

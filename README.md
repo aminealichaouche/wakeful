@@ -19,9 +19,17 @@ its developer.
 
 ## Download
 
-Get `Wakeful-<version>.dmg` from the
+Get Wakeful from the
 [latest release](https://github.com/aminealichaouche/wakeful/releases/latest),
-open it and drag Wakeful to Applications. The app is ad-hoc signed rather than
+open the disk image and drag Wakeful to Applications. There are two editions:
+
+| Edition | File | Updates |
+| --- | --- | --- |
+| Standard | `Wakeful-<version>.dmg` | **Check for Updates** button, and optional daily checks |
+| Offline | `Wakeful-<version>-offline.dmg` | None. The update code isn't in the app at all, so it never connects to the internet |
+
+Both have every other feature and share the same settings, so you can switch
+between them. The app is ad-hoc signed rather than
 signed with an Apple Developer ID, so the first time you open it macOS will
 refuse. Go to System Settings → Privacy & Security and click **Open Anyway**.
 
@@ -39,6 +47,7 @@ buttons inside it never closes it; click anywhere else to dismiss it.
   - While an app is running (ends when the app quits)
   - While a file is downloading (ends when the partial file is renamed or
     removed, or after it stops growing for 10 minutes)
+  - While a custom rule is true (see below)
 - **Session options**, shown as round toggle buttons
   - Allow display sleep (keep only the system awake)
   - Allow sleep when the lid is closed (turn off for closed-lid mode)
@@ -46,7 +55,32 @@ buttons inside it never closes it; click anywhere else to dismiss it.
 - **Settings** (a page that slides in): launch at login, start a session when
   Wakeful opens, notify when a session ends, check for updates automatically
   (off by default), screen saver delay, end the session on low battery
-- **Check for Updates** button at the bottom of the menu
+- **Check for Updates** button at the bottom of the menu (standard edition only)
+
+### Custom rules
+
+**While Custom Rule…** keeps the Mac awake while all (or any) of the conditions
+you pick are true:
+
+| Condition | Options |
+| --- | --- |
+| External Drive Is Connected | Any external drive, or a specific one |
+| Network Drive Is Attached | Any network share (SMB, AFP, NFS, WebDAV), or a specific one |
+| Charger Is Connected | |
+| External Display Is Connected | |
+| Audio Is Playing | Any app playing through any output |
+| App Is Running | A specific app |
+
+- External drives are physical drives that aren't built in, plus removable media
+  such as SD cards. Mounted disk images (`.dmg`) and network shares never count,
+  and neither do system volumes or the startup disk.
+- Specific drives are remembered by volume UUID, so another drive with the same
+  name doesn't match. Network shares are remembered by server and share name.
+- The rule page shows live which conditions are true. You can start once the rule
+  is true, and the session ends when it has been false for 5 seconds. A share
+  that drops out for a moment, such as a NAS reconnecting, doesn't end it.
+- Wakeful checks the rule every 2 seconds without touching the drives
+  themselves, so an unresponsive network share can't freeze it.
 
 ## Requirements
 
@@ -56,9 +90,14 @@ buttons inside it never closes it; click anywhere else to dismiss it.
 ## Build and run
 
 ```sh
-./scripts/build-app.sh      # produces build/Wakeful.app (universal, ad-hoc signed)
+./scripts/build-app.sh             # standard edition: build/Wakeful.app (universal, ad-hoc signed)
+./scripts/build-app.sh --offline   # offline edition:  build/offline/Wakeful.app
 open build/Wakeful.app
 ```
+
+The offline edition is compiled with `-DOFFLINE`, which leaves out the update
+checker. The build fails if the result contains a web address, links any
+networking API, or still contains update-checker code.
 
 Move `Wakeful.app` to `/Applications` before enabling **Launch at Login**.
 
@@ -115,19 +154,26 @@ Keeping a closed laptop awake in a bag can overheat it. Consider setting
 Bump `CFBundleShortVersionString` (and `CFBundleVersion`) in
 `Resources/Info.plist`, commit and push to `main`. The
 [Release workflow](.github/workflows/release.yml) sees a version with no
-release yet, runs the tests, builds the app and publishes release `v<version>`
-with `Wakeful-<version>.dmg`, `Wakeful-<version>.zip` and `SHA256SUMS.txt`.
+release yet, runs the tests for both editions, builds them and publishes release
+`v<version>` with `Wakeful-<version>.dmg`, `Wakeful-<version>.zip`,
+`Wakeful-<version>-offline.dmg`, `Wakeful-<version>-offline.zip` and
+`SHA256SUMS.txt`.
 GitHub adds the source code archives itself. Pushes that don't change the
 version do nothing.
 
-To build the disk image locally, run `./scripts/build-app.sh` and then
-`./scripts/make-dmg.sh`.
+To build a disk image locally, run `./scripts/build-app.sh` and then
+`./scripts/make-dmg.sh`. Add `--offline` to both for the offline edition.
 
 ## Sharing the app (e.g. from a NAS)
 
-Run `./scripts/release.sh`. It runs the tests, builds the app, and puts
-`Wakeful-<version>.dmg`, `Wakeful-<version>.zip`, `Wakeful-<version>-src.zip`, `SHA256SUMS.txt` and
-`VERSION.txt` in `Ready to NAS/`.
+Run `./scripts/release.sh`. It runs the tests for both editions, builds both, and
+puts these in `Ready to NAS/`:
+
+- `Wakeful-<version>.dmg` and `.zip`: the standard edition
+- `Wakeful-<version>-offline.dmg` and `-offline.zip`: the offline edition
+- `Wakeful-<version>-src.zip`: the source code
+- `SHA256SUMS.txt` and `VERSION.txt`
+
 Before that, it moves the previous release to `Ready to NAS/old/<version>_<date>/`.
 Set the version in `Resources/Info.plist` before releasing. Share the zip, not the raw `.app` folder, because
 copying a bundle over SMB can strip permissions or add `._` files.
@@ -147,7 +193,9 @@ copying a bundle over SMB can strip permissions or add `._` files.
 
 - Wakeful has no URL schemes, XPC services or document types, and it accepts
   no incoming connections.
-- Its only network request is the update check: an HTTPS GET to
+- The offline edition makes no network requests at all. The checks below apply
+  to the standard edition.
+- The standard edition's only network request is the update check: an HTTPS GET to
   `api.github.com/repos/aminealichaouche/wakeful/releases/latest`. It runs only
   when you click **Check for Updates**, or daily if you turn on **Check for
   Updates Automatically** (off by default). It sends no cookies or personal
@@ -172,7 +220,12 @@ swift test                                  # unit + stress tests, safe to run a
 WAKEFUL_PMSET_TESTS=1 swift test            # also toggles disablesleep for real (needs helper)
 WAKEFUL_APP_TESTS=1 swift test              # launches build/Wakeful.app and quits it every way
 WAKEFUL_NETWORK_TESTS=1 swift test          # makes the real update-check request to GitHub
+swift test -Xswiftc -DOFFLINE --scratch-path .build/offline   # the same suite for the offline edition
 ```
+
+Set `WAKEFUL_APP_PATH=build/offline/Wakeful.app` to run the launch-and-quit
+tests against the offline edition. The volume tests mount and unmount small
+temporary disk images, and the audio test plays a system sound at zero volume.
 
 The opt-in suites always restore normal sleep and your Wakeful settings when
 they finish. Quit Wakeful before running `WAKEFUL_APP_TESTS`.
@@ -195,8 +248,12 @@ Sources/Wakeful/
   Dialogs.swift             download picker and alerts
   StatusIcon.swift          drawn menu bar icon
   Settings.swift            UserDefaults-backed preferences
-  SystemInfo.swift          battery, idle time, screen saver, notifications
-  UpdateChecker.swift       "Check for Updates" against GitHub releases
+  SystemInfo.swift          battery, power source, displays, audio, idle time, notifications
+  CustomRule.swift          custom rule conditions, all/any matching, system snapshots
+  RuleView.swift            the "While Custom Rule" page
+  Volumes.swift             mounted volumes: external drives, network shares, disk images
+  Edition.swift             standard or offline edition
+  UpdateChecker.swift       "Check for Updates" against GitHub releases (standard edition only)
 ```
 
 ## License

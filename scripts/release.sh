@@ -1,12 +1,12 @@
 #!/bin/sh
 # Tests, builds and packages a release into "Ready to NAS":
-#   Wakeful-<version>.dmg      the signed app as a disk image
-#   Wakeful-<version>.zip      the signed app
-#   Wakeful-<version>-src.zip  the source code (whitelisted files only; no build output or local state)
-#   SHA256SUMS.txt             checksums for all three
-#   VERSION.txt                the app version
+#   Wakeful-<version>.dmg / .zip                  standard edition (can check GitHub for updates)
+#   Wakeful-<version>-offline.dmg / -offline.zip  offline edition (no update checks, no network code)
+#   Wakeful-<version>-src.zip                     the source code (whitelisted files only)
+#   SHA256SUMS.txt                                checksums for all of the above
+#   VERSION.txt                                   the app version
 # Whatever was there before is moved to "Ready to NAS/old/<version>_<timestamp>/".
-# Set SKIP_TESTS=1 to skip the test suite.
+# Set SKIP_TESTS=1 to skip the test suites.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -14,16 +14,18 @@ cd "$(dirname "$0")/.."
 READY="Ready to NAS"
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/Info.plist)
 SOURCE_FILES="Package.swift README.md LICENSE .gitignore .github Resources Sources Tests scripts"
-APP_ZIP="Wakeful-$VERSION.zip"
-APP_DMG="Wakeful-$VERSION.dmg"
+ARTIFACTS="Wakeful-$VERSION.dmg Wakeful-$VERSION.zip Wakeful-$VERSION-offline.dmg Wakeful-$VERSION-offline.zip"
 SRC_ZIP="Wakeful-$VERSION-src.zip"
 
 if [ "${SKIP_TESTS:-0}" != "1" ]; then
     swift test
+    swift test -Xswiftc -DOFFLINE --scratch-path .build/offline
 fi
 
 ./scripts/build-app.sh
 ./scripts/make-dmg.sh
+./scripts/build-app.sh --offline
+./scripts/make-dmg.sh --offline
 
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
@@ -37,15 +39,20 @@ for item in $SOURCE_FILES; do
 done
 ditto -c -k --norsrc --noextattr --keepParent "$SRC" "$WORK/$SRC_ZIP"
 
-# Check the source builds on its own before publishing it.
+# Check the source builds on its own, in both editions, before publishing it.
 mkdir "$WORK/verify"
 ditto -x -k "$WORK/$SRC_ZIP" "$WORK/verify"
 swift build --package-path "$WORK/verify/Wakeful-$VERSION-src" -c release >/dev/null
+swift build --package-path "$WORK/verify/Wakeful-$VERSION-src" -c release -Xswiftc -DOFFLINE \
+    --scratch-path "$WORK/verify/offline-build" >/dev/null
 
-# Check the app zip unpacks to a validly signed app.
-mkdir "$WORK/verify-app"
-ditto -x -k "build/$APP_ZIP" "$WORK/verify-app"
-codesign --verify --deep --strict "$WORK/verify-app/Wakeful.app"
+# Check each app zip unpacks to a validly signed app.
+for zip in "Wakeful-$VERSION.zip" "Wakeful-$VERSION-offline.zip"; do
+    rm -rf "$WORK/verify-app"
+    mkdir "$WORK/verify-app"
+    ditto -x -k "build/$zip" "$WORK/verify-app"
+    codesign --verify --deep --strict "$WORK/verify-app/Wakeful.app"
+done
 
 # Move the previous release aside.
 mkdir -p "$READY/old"
@@ -57,11 +64,12 @@ if [ -n "$(find "$READY" -maxdepth 1 -type f ! -name '.DS_Store' -print -quit)" 
     echo "Moved previous release to $OLD"
 fi
 
-cp "build/$APP_DMG" "$READY/$APP_DMG"
-cp "build/$APP_ZIP" "$READY/$APP_ZIP"
+for artifact in $ARTIFACTS; do
+    cp "build/$artifact" "$READY/$artifact"
+done
 cp "$WORK/$SRC_ZIP" "$READY/$SRC_ZIP"
 echo "$VERSION" > "$READY/VERSION.txt"
-(cd "$READY" && shasum -a 256 "$APP_DMG" "$APP_ZIP" "$SRC_ZIP" > SHA256SUMS.txt)
+(cd "$READY" && shasum -a 256 $ARTIFACTS "$SRC_ZIP" > SHA256SUMS.txt)
 
 echo
 echo "Released Wakeful $VERSION to \"$READY\":"

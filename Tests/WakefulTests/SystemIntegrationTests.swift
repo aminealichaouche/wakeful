@@ -105,9 +105,11 @@ final class AppQuitTests: XCTestCase {
     override func setUpWithError() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["WAKEFUL_APP_TESTS"] == "1",
                           "set WAKEFUL_APP_TESTS=1 to run")
-        appURL = URL(fileURLWithPath: #filePath)
+        // WAKEFUL_APP_PATH picks another build, e.g. build/offline/Wakeful.app.
+        let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("build/Wakeful.app")
+        appURL = ProcessInfo.processInfo.environment["WAKEFUL_APP_PATH"].map { URL(fileURLWithPath: $0, relativeTo: root) }
+            ?? root.appendingPathComponent("build/Wakeful.app")
         try XCTSkipUnless(FileManager.default.fileExists(atPath: appURL.path), "run scripts/build-app.sh first")
         XCTAssertTrue(NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).isEmpty,
                       "quit Wakeful before running these tests")

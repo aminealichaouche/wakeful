@@ -3,7 +3,9 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = Settings()
     lazy var manager = SessionManager(settings: settings)
+    #if !OFFLINE
     let updater = UpdateChecker()
+    #endif
     private var signalSources: [DispatchSourceSignal] = []
     private var statusPanel: StatusPanelController?
 
@@ -14,12 +16,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         quitCleanlyOnSignals()
+        #if OFFLINE
+        statusPanel = StatusPanelController(manager: manager, settings: settings)
+        #else
         statusPanel = StatusPanelController(manager: manager, settings: settings, updater: updater)
+        #endif
 
         if settings.startSessionAtLaunch {
             manager.start(.manual(until: nil))
         }
+        #if !OFFLINE
         updater.setAutomaticChecks(settings.checkForUpdatesAutomatically)
+        #endif
     }
 
     func applicationWillTerminate(_ notification: Notification) {

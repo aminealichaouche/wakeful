@@ -8,7 +8,8 @@ let package = Package(
         .executableTarget(
             name: "Wakeful",
             path: "Sources/Wakeful",
-            linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("ServiceManagement")]
+            linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("ServiceManagement"),
+                             .linkedFramework("DiskArbitration"), .linkedFramework("CoreAudio")]
         ),
         .testTarget(
             name: "WakefulTests",

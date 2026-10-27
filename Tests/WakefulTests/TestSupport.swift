@@ -70,3 +70,20 @@ func isSleepDisabled() -> Bool {
     shell("/usr/bin/pmset -g | /usr/bin/awk '/SleepDisabled/ {print $2}'").output
         .trimmingCharacters(in: .whitespacesAndNewlines) == "1"
 }
+
+/// The menu, built the way the current edition builds it (the offline edition has no updater).
+func makeMenuView(manager: SessionManager, settings: Settings, navigation: MenuNavigation) -> MenuView {
+    #if OFFLINE
+    MenuView(manager: manager, settings: settings, navigation: navigation)
+    #else
+    MenuView(manager: manager, settings: settings, updater: UpdateChecker(currentVersion: "1.2.0"), navigation: navigation)
+    #endif
+}
+
+func makeStatusPanelController(manager: SessionManager, settings: Settings) -> StatusPanelController {
+    #if OFFLINE
+    StatusPanelController(manager: manager, settings: settings)
+    #else
+    StatusPanelController(manager: manager, settings: settings, updater: UpdateChecker())
+    #endif
+}

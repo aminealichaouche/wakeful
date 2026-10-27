@@ -12,6 +12,7 @@ final class Settings: ObservableObject {
         static let notifyWhenSessionEnds = "notifyWhenSessionEnds"
         static let lowBatteryThreshold = "lowBatteryThreshold"
         static let checkForUpdatesAutomatically = "checkForUpdatesAutomatically"
+        static let customRule = "customRule"
     }
 
     private let defaults: UserDefaults
@@ -26,8 +27,10 @@ final class Settings: ObservableObject {
             Key.startSessionAtLaunch: false,
             Key.notifyWhenSessionEnds: true,
             Key.lowBatteryThreshold: 0,
-            Key.checkForUpdatesAutomatically: false,
         ])
+        #if !OFFLINE
+        defaults.register(defaults: [Key.checkForUpdatesAutomatically: false])
+        #endif
     }
 
     /// When true, only system sleep is prevented; the display may still turn off.
@@ -68,9 +71,17 @@ final class Settings: ObservableObject {
         set { objectWillChange.send(); defaults.set(newValue, forKey: Key.lowBatteryThreshold) }
     }
 
+    /// The rule last set up under "While Custom Rule…", kept for next time.
+    var customRule: CustomRule {
+        get { CustomRule.decode(defaults.data(forKey: Key.customRule)) }
+        set { objectWillChange.send(); defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.customRule) }
+    }
+
+    #if !OFFLINE
     /// Off by default: Wakeful makes no network requests unless asked to.
     var checkForUpdatesAutomatically: Bool {
         get { defaults.bool(forKey: Key.checkForUpdatesAutomatically) }
         set { objectWillChange.send(); defaults.set(newValue, forKey: Key.checkForUpdatesAutomatically) }
     }
+    #endif
 }

@@ -1,3 +1,7 @@
+#if !OFFLINE
+// The offline edition is built with -DOFFLINE and contains none of this: it never connects
+// to the internet.
+
 import AppKit
 
 /// Looks for a newer Wakeful release on GitHub.
@@ -234,3 +238,5 @@ final class UpdateChecker: ObservableObject {
         return URL(string: releasePagePrefix + parts.map(String.init).joined(separator: "."))
     }
 }
+
+#endif

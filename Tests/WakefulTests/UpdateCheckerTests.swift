@@ -1,3 +1,4 @@
+#if !OFFLINE
 import XCTest
 @testable import Wakeful
 
@@ -80,3 +81,4 @@ final class UpdateCheckerNetworkTests: XCTestCase {
         }
     }
 }
+#endif

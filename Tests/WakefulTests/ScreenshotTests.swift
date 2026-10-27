@@ -26,15 +26,18 @@ final class ScreenshotTests: XCTestCase {
     }
 
     func testCaptureReadmeScreenshots() throws {
-        let updater = UpdateChecker(currentVersion: "1.1.7")
         let navigation = MenuNavigation()
-        let menu = MenuView(manager: manager, settings: settings, updater: updater, navigation: navigation)
+        let menu = makeMenuView(manager: manager, settings: settings, navigation: navigation)
 
         try render(menu, "1-idle")
         manager.start(.manual(until: Date().addingTimeInterval(83 * 60 + 30)))
         try render(menu, "2-session")
         navigation.page = .settings
         try render(menu, "3-settings")
+        manager.end()
+        settings.customRule = CustomRule(match: .all, conditions: [.networkDrive(nil), .charger])
+        navigation.page = .rule
+        try render(menu, "4-custom-rule")
     }
 
     /// Draws the menu on the panel's own menu material, as it appears under the menu bar.

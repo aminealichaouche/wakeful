@@ -12,7 +12,7 @@ final class StatusPanelToggleTests: XCTestCase {
         let settings: Settings
         (settings, cleanupSettings) = makeTestSettings()
         let manager = SessionManager(settings: settings, closedDisplayGuard: ClosedDisplayGuard(directory: makeTempDirectory()))
-        controller = StatusPanelController(manager: manager, settings: settings, updater: UpdateChecker())
+        controller = makeStatusPanelController(manager: manager, settings: settings)
     }
 
     override func tearDown() {

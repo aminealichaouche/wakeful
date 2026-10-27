@@ -32,7 +32,19 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
     private var transition = 0
     private var hostingController: NSHostingController<AnyView>!
 
-    init(manager: SessionManager, settings: Settings, updater: UpdateChecker) {
+    #if OFFLINE
+    convenience init(manager: SessionManager, settings: Settings) {
+        self.init(manager: manager, settings: settings,
+                  makeMenu: { MenuView(manager: manager, settings: settings, navigation: $0) })
+    }
+    #else
+    convenience init(manager: SessionManager, settings: Settings, updater: UpdateChecker) {
+        self.init(manager: manager, settings: settings,
+                  makeMenu: { MenuView(manager: manager, settings: settings, updater: updater, navigation: $0) })
+    }
+    #endif
+
+    private init(manager: SessionManager, settings: Settings, makeMenu: (MenuNavigation) -> MenuView) {
         super.init()
 
         let background = NSVisualEffectView()
@@ -50,7 +62,7 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
         // Top-aligned so content never jumps while the panel animates to a new height.
         hostingController = NSHostingController(rootView: AnyView(
             PinnedToTop {
-                MenuView(manager: manager, settings: settings, updater: updater, navigation: navigation)
+                makeMenu(navigation)
                     .fixedSize(horizontal: false, vertical: true)
                     .background(GeometryReader { proxy in
                         Color.clear.preference(key: MenuSizeKey.self, value: proxy.size)
