@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import IOKit.pwr_mgt
 import XCTest
@@ -93,4 +94,10 @@ func makeStatusPanelController(manager: SessionManager, settings: Settings) -> S
         controller.iconFrameOverride = NSRect(x: visible.midX, y: visible.maxY, width: 24, height: 24)
     }
     return controller
+}
+
+/// True while the lock screen is up. macOS then treats every window as hidden and SwiftUI stops
+/// redrawing them, so tests that watch the panel resize can't run.
+var isScreenLocked: Bool {
+    (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
 }

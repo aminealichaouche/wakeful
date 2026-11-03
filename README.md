@@ -49,8 +49,9 @@ buttons inside it never closes it; click anywhere else to dismiss it.
     removed, or after it stops growing for 10 minutes)
   - While a custom rule is true (see below)
 - **Session options**, shown as round toggle buttons
-  - Allow display sleep (keep only the system awake)
   - Allow sleep when the lid is closed (turn off for closed-lid mode)
+  - Lock the Mac when the lid is closed (see below)
+  - Allow display sleep (keep only the system awake)
   - Allow the screen saver after N minutes of inactivity
 - **Settings** (a page that slides in): launch at login, start a session when
   Wakeful opens, notify when a session ends, check for updates automatically
@@ -161,6 +162,19 @@ hand:
 sudo pmset -a disablesleep 0
 ```
 
+### Locking when the lid closes
+
+Normally closing a MacBook's lid locks it, because the Mac goes to sleep. When
+it stays awake instead (closed-display mode, or when you use an external
+display), it would stay unlocked. With **Lock Mac When Lid Is Closed** on, Wakeful
+locks the Mac the moment the lid closes during a session, exactly like
+**Apple menu → Lock Screen**. Wakeful listens for the power manager's lid
+notification. It locks only when the lid goes from open to closed, so starting
+Wakeful with the lid already shut doesn't lock. The lock uses the same system
+function as Lock Screen. If a future macOS ever removed it, Wakeful would start
+the screen saver instead, which locks if a password is required immediately
+after it starts.
+
 Keeping a closed laptop awake in a bag can overheat it. Consider setting
 **End on Low Battery** under Settings.
 
@@ -267,6 +281,7 @@ Sources/Wakeful/
   CustomRule.swift          custom rule conditions, on/off switches, all/any matching, system snapshots
   RuleAutomation.swift      runs the custom rule: starts and ends sessions as it becomes true or false
   SystemChangeMonitor.swift mount, app, power, display and audio change events that trigger rule checks
+  LidLock.swift             lid open/close notifications and locking the screen when the lid closes
   RuleView.swift            the "While Custom Rule" page
   Volumes.swift             mounted volumes: external drives, network shares, disk images
   Edition.swift             standard or offline edition

@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var signalSources: [DispatchSourceSignal] = []
     private var statusPanel: StatusPanelController?
     private lazy var ruleAutomation = RuleAutomation(manager: manager, settings: settings)
+    private lazy var lidLock = LidLock(manager: manager, settings: settings)
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         // Hides the Dock icon when running outside the app bundle (e.g. `swift run`).
@@ -27,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             manager.start(.manual(until: nil))
         }
         ruleAutomation.start()
+        lidLock.start()
         warmUpSensors()
         #if !OFFLINE
         updater.setAutomaticChecks(settings.checkForUpdatesAutomatically)

@@ -85,14 +85,6 @@ struct MenuView: View {
                     .overlay(alignment: .trailing) {
                         InfoButton(isOn: $navigation.showsOptionHelp)
                     }
-                ToggleRow(icon: "display", title: "Allow Display Sleep", isOn: settings.allowDisplaySleep,
-                          detail: optionHelp("""
-                              Lets the screen turn off as usual. The Mac itself stays awake, so downloads \
-                              and other work keep running.
-                              """)) {
-                    settings.allowDisplaySleep.toggle()
-                    manager.applyPowerSettings()
-                }
                 ToggleRow(icon: "laptopcomputer", title: "Allow Sleep When Lid Is Closed",
                           isOn: settings.allowSleepWhenDisplayClosed,
                           detail: optionHelp("""
@@ -100,6 +92,23 @@ struct MenuView: View {
                               Wakeful asks for your password once to allow this.
                               """)) {
                     manager.setAllowSleepWhenDisplayClosed(!settings.allowSleepWhenDisplayClosed)
+                }
+                ToggleRow(icon: "lock.laptopcomputer", title: "Lock Mac When Lid Is Closed",
+                          isOn: settings.lockWhenLidClosed,
+                          detail: optionHelp("""
+                              Locks the Mac the moment you close the lid, like Lock Screen in the Apple \
+                              menu. Useful when it stays awake with the lid closed, or when you use an \
+                              external display.
+                              """)) {
+                    settings.lockWhenLidClosed.toggle()
+                }
+                ToggleRow(icon: "display", title: "Allow Display Sleep", isOn: settings.allowDisplaySleep,
+                          detail: optionHelp("""
+                              Lets the screen turn off as usual. The Mac itself stays awake, so downloads \
+                              and other work keep running.
+                              """)) {
+                    settings.allowDisplaySleep.toggle()
+                    manager.applyPowerSettings()
                 }
                 ToggleRow(icon: "sparkles.tv",
                           title: "Allow Screen Saver After \(settings.screenSaverDelayMinutes)m",
@@ -402,7 +411,7 @@ private struct CustomTimePanel: View {
                 Button("Start") {
                     manager.start(.manual(until: until))
                 }
-                .disabled(until <= Date())
+                .disabled(until.timeIntervalSinceNow <= 0)  // not `Date <=`; see SessionManager.tick
             }
         }
         .font(.system(size: 12))

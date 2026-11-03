@@ -11,13 +11,15 @@ final class RulePagePanelTests: XCTestCase {
     private var manager: SessionManager!
     private var controller: StatusPanelController!
 
-    override func setUp() {
+    override func setUpWithError() throws {
+        try XCTSkipIf(isScreenLocked, "the screen is locked, so SwiftUI isn't redrawing the panel")
         (settings, cleanupSettings) = makeTestSettings()
         manager = SessionManager(settings: settings, closedDisplayGuard: ClosedDisplayGuard(directory: makeTempDirectory()))
         controller = makeStatusPanelController(manager: manager, settings: settings)
     }
 
     override func tearDown() {
+        guard controller != nil else { return }
         controller.closePanel()
         waitUntil(timeout: 0.3) { false }
         controller = nil

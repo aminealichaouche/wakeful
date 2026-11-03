@@ -13,6 +13,7 @@ final class Settings: ObservableObject {
         static let lowBatteryThreshold = "lowBatteryThreshold"
         static let checkForUpdatesAutomatically = "checkForUpdatesAutomatically"
         static let customRule = "customRule"
+        static let lockWhenLidClosed = "lockWhenLidClosed"
     }
 
     private let defaults: UserDefaults
@@ -27,6 +28,7 @@ final class Settings: ObservableObject {
             Key.startSessionAtLaunch: false,
             Key.notifyWhenSessionEnds: true,
             Key.lowBatteryThreshold: 0,
+            Key.lockWhenLidClosed: false,
         ])
         #if !OFFLINE
         defaults.register(defaults: [Key.checkForUpdatesAutomatically: false])
@@ -43,6 +45,12 @@ final class Settings: ObservableObject {
     var allowSleepWhenDisplayClosed: Bool {
         get { defaults.bool(forKey: Key.allowSleepWhenDisplayClosed) }
         set { objectWillChange.send(); defaults.set(newValue, forKey: Key.allowSleepWhenDisplayClosed) }
+    }
+
+    /// During a session, lock the Mac when the lid is closed.
+    var lockWhenLidClosed: Bool {
+        get { defaults.bool(forKey: Key.lockWhenLidClosed) }
+        set { objectWillChange.send(); defaults.set(newValue, forKey: Key.lockWhenLidClosed) }
     }
 
     var allowScreenSaver: Bool {

@@ -200,7 +200,9 @@ final class SessionManager: ObservableObject {
         guard let session else { return }
         tickCount += 1
 
-        if let endDate = session.endDate, endDate <= Date() {
+        // Compared as seconds rather than with `Date <=`: Xcode 27.2's SDK calls a Foundation
+        // function for that operator which some 27.2 pre-release builds lack, crashing the app.
+        if let endDate = session.endDate, endDate.timeIntervalSinceNow <= 0 {
             end(reason: "The timer finished.")
             return
         }

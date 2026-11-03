@@ -10,6 +10,7 @@ final class StatusPanelResizeTests: XCTestCase {
 
     override func setUpWithError() throws {
         try XCTSkipIf(isRunningOnCI, "frame-timing test; shared CI runners are too slow to sample reliably")
+        try XCTSkipIf(isScreenLocked, "the screen is locked, so SwiftUI isn't redrawing the panel")
         let settings: Settings
         (settings, cleanupSettings) = makeTestSettings()
         manager = SessionManager(settings: settings, closedDisplayGuard: ClosedDisplayGuard(directory: makeTempDirectory()))
